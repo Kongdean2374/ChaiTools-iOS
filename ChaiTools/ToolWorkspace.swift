@@ -201,6 +201,7 @@ struct ToolWorkspace: View {
     }
     private func reset(tool: Tool) { model.clear(); model.updateTool(tool); composer = ""; options = EditorOptions() }
     private func submit() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         guard (try? SensitiveContentGuard.validate(composer)) != nil else { blocked(); return }
         if model.task.revisions.isEmpty { guard model.setSource(composer), model.setInstruction("") else { return } }
         else { guard model.setInstruction(composer) else { return } }
