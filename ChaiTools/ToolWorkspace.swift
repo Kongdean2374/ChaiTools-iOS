@@ -151,7 +151,7 @@ struct ToolWorkspace: View {
         }
     }
     @ViewBuilder private var resultButtons: some View {
-        Button { UIPasteboard.general.string = model.result; model.status = "已複製結果"; AppHaptics.result(success: true) } label: { Label("複製", systemImage: "doc.on.doc") }.buttonStyle(QuietButtonStyle(prominent: true))
+        Button { UIPasteboard.general.string = model.result; model.status = "已複製結果"; AppHaptics.result(success: true) } label: { Label("複製", systemImage: "doc.on.doc") }.buttonStyle(QuietButtonStyle())
         ShareLink(item: model.result) { Label("分享", systemImage: "square.and.arrow.up") }.buttonStyle(QuietButtonStyle())
         Button("儲存編輯版本") { model.saveEdit(model.result) }.buttonStyle(QuietButtonStyle()).disabled(model.busy)
     }

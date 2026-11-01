@@ -17,6 +17,7 @@ struct KeyboardNotice: Identifiable {
     @Published var preferences = Preferences()
     @Published var fullAccess = false
     @Published var sharing = false
+    @Published var loadingPreferences = false
     @Published var needsGlobe = false
     @Published var model: WorkspaceModel?
     @Published var notice: KeyboardNotice?
@@ -31,20 +32,22 @@ struct KeyboardNotice: Identifiable {
     private var refreshTask: Task<Void, Never>?
     private var noticeTask: Task<Void, Never>?
     private var refreshID = UUID()
-    var statusLabel: String { !fullAccess ? "本機模式" : !sharing ? "僅主 App AI" : "AI 工具" }
+    var statusLabel: String { loadingPreferences ? "讀取設定" : !fullAccess ? "本機模式" : !sharing ? "僅主 App AI" : "AI 工具" }
     var tools: [Tool] { preferences.tools.filter(\.enabled).sorted { $0.favorite && !$1.favorite } }
 
     func refresh() {
         fullAccess = controller?.hasFullAccess ?? false
         let id = UUID(); refreshID = id
         refreshTask?.cancel()
-        guard fullAccess else { sharing = false; return }
+        guard fullAccess else { sharing = false; loadingPreferences = false; return }
+        loadingPreferences = true
         refreshTask = Task {
             let loaded = await Task.detached(priority: .utility) { () -> (Preferences?, Bool) in
                 guard StorageLocation.sharedContainer != nil else { return (nil, false) }
                 return (try? SharedStore.live().preferences(), true)
             }.value
             guard !Task.isCancelled, refreshID == id else { return }
+            loadingPreferences = false
             sharing = loaded.1
             if let p = loaded.0 { preferences = p }
         }
@@ -76,6 +79,7 @@ struct KeyboardNotice: Identifiable {
         }
     }
     func explainAvailability() {
+        if loadingPreferences { notify("正在讀取設定，請稍候再試。"); return }
         if !fullAccess { notify("AI 需在 iOS 設定 → 一般 → 鍵盤 → ChaiTools 允許完整取用。本機計算仍可用。", error: true) }
         else if !sharing { notify("此安裝版本無法與主 App 共用金鑰。請在主 App 處理後複製使用；完整取用無法補上共享權限。", error: true) }
         else { notify("只在你點執行時送出文字。金鑰與模型在主 App 設定。") }
@@ -106,7 +110,7 @@ struct KeyboardNotice: Identifiable {
         guard input.count <= 20000, model.task.source.count <= 8000 else { notify("內容過長，請使用主 App。", error: true); return }
         fullAccess = controller?.hasFullAccess ?? false
         if model.task.tool.id != "calculate" || (try? Calculator.evaluate(input)) == nil {
-            guard fullAccess && sharing else { explainAvailability(); return }
+            guard !loadingPreferences && fullAccess && sharing else { explainAvailability(); return }
         }
         let configuration = model.task.tool.id == "translate" ? (detailed ? "詳細模式。" : "快速模式。") : ""
         model.run(preferences: preferences, networkAllowed: fullAccess, revision: revision, configuration: configuration)

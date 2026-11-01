@@ -57,4 +57,6 @@
 
 ## 建置結果
 
-本次 source commit 的 CI 結果與產物待 GitHub Actions 確認；成功後更新此節。工作流程維持 Release iphoneos、無簽章、App＋Keyboard appex、IPA 結構與平台檢查。
+1.2.0 主改版 `b2a3903` 已通過 [GitHub Actions](https://github.com/Kongdean2374/ChaiTools-iOS/actions/runs/41278989139)：10 項核心測試、Release iphoneos App／Keyboard 編譯、IPA 結構與平台驗證、產物上傳。後續收尾調整（設定讀取中提示、複製按鈕層級）另觸發建置；請以 main 最新 run 作為下載來源。沒有啟用 App／UI 自動測試。
+
+以上編譯成功不代表已真機驗證畫面、跨鍵盤跳動、API 帳號授權或插入行為；這些仍依上表由使用者裝置驗收。

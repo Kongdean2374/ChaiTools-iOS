@@ -24,7 +24,7 @@ ChaiTools 是 iOS 17+ 原生 SwiftUI 工作台與 UIKit 第三方 AI 鍵盤。�
 
 ## 使用方式
 
-1. 主 App「設定」點「貼上金鑰」或輸入金鑰，儲存到 App 私有加密保護檔案；點「測試連線」。測試會真的呼叫目前模型，可能產生少量費用。掃描模型後選擇 ID，再儲存偏好。
+1. 主 App「設定 → AI 連線」點「貼上金鑰」或輸入金鑰，儲存到 App 私有加密保護檔案；點「測試連線」。測試會真的呼叫目前模型，可能產生少量費用。掃描模型後選擇 ID，再儲存偏好。
 2. iOS 設定 → 一般 → 鍵盤 → 鍵盤 → 新增鍵盤 → ChaiTools。需要網路 AI 與共享資料時開啟「允許完整取用」。
 3. 在宿主 App 複製文字，從地球鍵切換 ChaiTools，選工具 → 貼上原文 → 執行。文章生成可把主題貼入追加指令，不需原文。
 4. 確認結果後複製或插入。若使用「取代選取」，會核對 documentIdentifier、選取文字及前後文；任一失效即拒絕取代。普通插入遇到選取時要求先取消選取，避免無意覆寫。從不自動送出，也不批量 deleteBackward。
@@ -79,13 +79,15 @@ bash scripts/build-unsigned-ipa.sh
 - 目前詳細翻譯使用 JSON 提示與安全解析，未強制 JSON Schema，支援不遵守格式的模型退化成全文顯示。
 - 歷史對照是前後版全文對照，沒有逐字差異標色；局部改寫採手動擷取段落流程。自訂輸入欄位是文字說明，沒有任意動態表單產生器。
 - 不提供自製中文輸入法、串流逐字顯示、背景生成或即時金融資料源；這些不會用假資料代替。
-- 尚未有本次建置成功或 IPA 已檢驗的結論，不將待驗證項目標示完成。
+- 真機視覺、插入與宿主切換仍待裝置驗收；CI 通過不等同真機功能全部通過。
 
 ## 參考
 
 [Apple UITextDocumentProxy](https://developer.apple.com/documentation/uikit/uitextdocumentproxy) · [OpenAI web search](https://developers.openai.com/api/docs/guides/tools-web-search) · [GitHub upload-artifact](https://github.com/actions/upload-artifact)
 
 檔案加密依據：[Apple 完整檔案保護說明](https://developer.apple.com/documentation/foundation/nsdata/writingoptions/completefileprotection)。
+
+以下舊版段落保留各版本當時的驗證狀態；最新建置結果見末尾 1.2.0 與 UI 驗收紀錄。
 
 ## 1.1.0 互動與介面更新
 
@@ -127,3 +129,6 @@ UI 只查詢金鑰檔案是否存在；使用者主動執行 AI／模型掃描�
 主要檔案：`Shared/InterfaceTheme.swift`、`Shared/KeyboardLayoutMetrics.swift`、`Shared/ToolPresentation.swift`；`ChaiToolsKeyboard/KeyboardViewController.swift`、`KeyboardBridge.swift`、`KeyboardPanel.swift`；`ChaiTools/ToolHomeView.swift`、`ToolWorkspace.swift`、`EditorOptions.swift`、`SettingsAndHistory.swift`。檔案均由 XcodeGen 的來源目錄規則納入對應 Target。
 
 測試、對比值、設計高度提案與待測矩陣見 [UI_REVIEW_1.2.0.md](UI_REVIEW_1.2.0.md)。純邏輯 XCTest 在 CI 執行；不啟動 App／UI 自動測試、不使用真實 API 金鑰。無實體裝置／模擬器，不宣稱已消除所有跨鍵盤跳動，也不提供虛構截圖或高度測量。
+
+
+1.2.0 主改版 `b2a3903` 已通過 [GitHub Actions](https://github.com/Kongdean2374/ChaiTools-iOS/actions/runs/41278989139)：10 項核心測試、Release iphoneos App／Keyboard 編譯、IPA 結構與平台驗證、產物上傳。後續收尾調整（設定讀取中提示、複製按鈕層級）另觸發建置；請以 main 最新 run 作為下載來源。沒有啟用 App／UI 自動測試。

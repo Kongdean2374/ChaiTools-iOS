@@ -1,6 +1,6 @@
 # 驗收紀錄
 
-2026-11-01：原始碼與 CI 已準備；本地無 Apple 工具鏈。以下真機／CI 項目**尚未實測**，由 Actions 與裝置結果更新，不預填成功。
+2026-11-01：1.2.0 主改版 `b2a3903` 已通過 [GitHub Actions](https://github.com/Kongdean2374/ChaiTools-iOS/actions/runs/41278989139)：10 項核心測試、Release iphoneos App／Keyboard 編譯、IPA 結構與平台驗證、產物上傳。後續收尾調整（設定讀取中提示、複製按鈕層級）另觸發建置；請以 main 最新 run 作為下載來源。沒有啟用 App／UI 自動測試。 以下操作矩陣是仍需真機執行的驗收項目；本地無 Apple 裝置／模擬器。
 
 | 項目 | 操作／判定 |
 | --- | --- |
