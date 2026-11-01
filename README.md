@@ -146,3 +146,6 @@ UI 只查詢金鑰檔案是否存在；使用者主動執行 AI／模型掃描�
 
 
 1.2.0 主改版 `b2a3903` 已通過 [GitHub Actions](https://github.com/Kongdean2374/ChaiTools-iOS/actions/runs/41278989139)：10 項核心測試、Release iphoneos App／Keyboard 編譯、IPA 結構與平台驗證、產物上傳。後續收尾調整（設定讀取中提示、複製按鈕層級）另觸發建置；請以 main 最新 run 作為下載來源。沒有啟用 App／UI 自動測試。
+
+
+1.3.0 主改版 `192b969` 已通過 [核心與安全測試、Xcode 編譯及 IPA 驗證](https://github.com/Kongdean2374/ChaiTools-iOS/actions/runs/41280795252)。請以 Actions 最新 main run 取得包含最後收尾的版本；未完成的 run 不標成成功。

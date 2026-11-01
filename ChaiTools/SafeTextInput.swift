@@ -45,15 +45,6 @@ struct SafeTextInput: UIViewRepresentable {
     }
 }
 
-extension Binding where Value == String {
-    func guarded(onBlocked: @escaping () -> Void) -> Binding<String> {
-        Binding(get: { (try? SensitiveContentGuard.checked(wrappedValue)) ?? "" }, set: { value in
-            guard (try? SensitiveContentGuard.validate(value)) != nil else { onBlocked(); return }
-            wrappedValue = value
-        })
-    }
-}
-
 struct SafeLabeledInput: View {
     let title: String
     @Binding var text: String

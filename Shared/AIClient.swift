@@ -106,6 +106,7 @@ struct AIClient {
             }
         }
         if let usage = root["usage"] as? [String: Any] { answer.inputTokens = usage["input_tokens"] as? Int ?? 0; answer.outputTokens = usage["output_tokens"] as? Int ?? 0 }
+        try SensitiveContentGuard.validate(value: answer)
         return answer
     }
 }

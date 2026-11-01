@@ -53,6 +53,12 @@ struct KeyboardNotice: Identifiable {
             sharing = loaded.1; hasKey = loaded.2
             if !loaded.3.isEmpty { notify(loaded.3, error: true) }
             if let p = loaded.0 { preferences = p }
+            // A key may have changed while this extension was suspended.
+            // Re-screen retained drafts before showing any of them again.
+            cachedModels = cachedModels.filter { (try? SensitiveContentGuard.validate(value: $0.value.task)) != nil }
+            if let model, (try? SensitiveContentGuard.validate(value: model.task)) == nil { resetContext(); notify(SensitiveContentGuard.message, error: true) }
+            if (try? SensitiveContentGuard.validate(homeSource)) == nil { homeSource = ""; homePastePending = false }
+
         }
     }
     func select(_ tool: Tool) {
@@ -130,6 +136,7 @@ struct KeyboardNotice: Identifiable {
         AppHaptics.tap(enabled: haptics)
     }
     func copy() {
+        guard controller?.hasFullAccess == true else { notify("複製需要完整取用；你仍可使用『插入游標』。", error: true); return }
         guard let model, !model.result.isEmpty else { return }
         let result: String
         do { result = try model.output() } catch { notify(SensitiveContentGuard.userMessage(error), error: true); return }

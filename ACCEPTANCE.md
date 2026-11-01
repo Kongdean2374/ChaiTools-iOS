@@ -70,3 +70,8 @@
 - 新增幾何範圍邏輯測試，原 API／計算／儲存／金鑰拒送測試保留，在 CI 執行純邏輯 `swift test`，沒有 App/UI 測試或 API secrets。
 - 本地 Swift 語法解析與配置／shell 檢查通過；實際 Swift 型別檢查、Xcode 建置及 IPA 結構由 Actions 確認。
 - 目前所有螢幕視覺、宿主行為、20 次快速切換、放大字體／旋轉、兩種鍵盤實際高度差均待真機；不能把高度提案當測量值。
+
+
+## 1.3.0 CI
+
+主改版 `192b969` 的 [Actions](https://github.com/Kongdean2374/ChaiTools-iOS/actions/runs/41280795252) 已通過核心／安全測試、Xcode 編譯與 IPA 驗證。最後收尾修改另觸發 main 建置，不能把前一 run 成功當成後一 commit 已驗證。真機 U01–U10 及八組畫面仍待驗收。

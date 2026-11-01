@@ -33,6 +33,8 @@ final class SecurityTests: XCTestCase {
         for data in [try response(text: fake), try response(text: detail), try response(text: "正常", title: fake), try response(text: "正常", url: "https://example.com/?q=" + fake)] {
             XCTAssertThrowsError(try AIClient.parse(data))
         }
+        let nestedEscaped = detail.replacingOccurrences(of: "sk-", with: #"\u0073\u006b-"#)
+        XCTAssertThrowsError(try AIClient.parse(response(text: nestedEscaped)))
         let escaped = String(decoding: try response(text: fake), as: UTF8.self).replacingOccurrences(of: "sk-", with: #"\u0073\u006b-"#)
         XCTAssertThrowsError(try AIClient.parse(Data(escaped.utf8)))
     }

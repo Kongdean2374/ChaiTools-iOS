@@ -30,7 +30,7 @@ struct ToolListView: View {
                     }.buttonStyle(QuietButtonStyle())
                 }.padding(16)
             }.appSurface().navigationTitle("ChaiTools").navigationBarTitleDisplayMode(.inline)
-                .searchable(text: $query.guarded(onBlocked: { error = SensitiveContentGuard.message }), prompt: "搜尋工具")
+                .safeAreaInset(edge: .top) { SafeLabeledInput("搜尋工具", text: $query, onBlocked: { error = SensitiveContentGuard.message }).padding(.horizontal).background(CTBarSurface()) }
                 .sheet(isPresented: $showSettings, onDismiss: { Task { await load() } }) { SettingsView() }
                 .task { await load() }
         }

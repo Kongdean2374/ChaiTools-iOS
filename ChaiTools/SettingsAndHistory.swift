@@ -93,10 +93,8 @@ struct SettingsView: View {
             }
             Text(model.key.isEmpty ? "可長按輸入框貼上，或點『貼上金鑰』。" : "輸入欄已有 \(model.key.count) 個字元，尚未儲存。")
                 .font(.caption).foregroundStyle(.secondary)
-            if model.clipboardMayContainKey {
-                Text("剪貼簿可能仍保留金鑰；請勿貼到普通文字區。").font(.caption)
-                Button("清除目前剪貼簿") { model.clearClipboard() }.disabled(model.busy)
-            }
+            Text(model.clipboardMayContainKey ? "剪貼簿可能仍保留金鑰；請勿貼到普通文字區。" : "若曾複製金鑰，可在這裡主動清空剪貼簿。").font(.caption)
+            Button("清除目前剪貼簿") { model.clearClipboard() }.disabled(model.busy)
             if let pasteNotice = model.pasteNotice { NoticeCard(notice: pasteNotice) }
             Button { dismissKeyKeyboard(); model.saveKey() } label: {
                 Label("儲存金鑰", systemImage: "lock.shield").frame(maxWidth: .infinity, minHeight: 44)
@@ -131,7 +129,7 @@ struct SettingsView: View {
                                 HStack { Text(id); Spacer(); if model.preferences.model == id { Image(systemName: "checkmark.circle.fill").foregroundStyle(InterfaceTheme.accent) } }
                             }.buttonStyle(.plain)
                         }
-                    }.appSurface().searchable(text: $filter.guarded(onBlocked: model.blocked), prompt: "搜尋模型 ID").navigationTitle("選擇模型")
+                    }.appSurface().safeAreaInset(edge: .top) { SafeLabeledInput("搜尋模型 ID", text: $filter, onBlocked: model.blocked).padding(.horizontal).background(CTBarSurface()) }.navigationTitle("選擇模型")
                         .alert(item: $model.alert) { notice in Alert(title: Text(notice.title), message: Text(notice.message), dismissButton: .default(Text("知道了"))) }
                 } label: { Label("選擇模型（\(model.models.count)）", systemImage: "list.bullet") }
             }
@@ -218,7 +216,7 @@ struct HistoryView: View {
                 }
                 if tasks.count > limit { Button("載入更多") { limit += 20 } }
                 if tasks.isEmpty { ContentUnavailableView("沒有工作紀錄", systemImage: "clock", description: Text("可在設定開啟；隱私模式不永久保存。")) }
-            }.appSurface().searchable(text: $search.guarded(onBlocked: { error = SensitiveContentGuard.message }), prompt: "搜尋原文或結果").navigationTitle("工作紀錄").navigationBarTitleDisplayMode(.inline)
+            }.appSurface().safeAreaInset(edge: .top) { SafeLabeledInput("搜尋原文或結果", text: $search, onBlocked: { error = SensitiveContentGuard.message }).padding(.horizontal).background(CTBarSurface()) }.navigationTitle("工作紀錄").navigationBarTitleDisplayMode(.inline)
                 .toolbar { Button("清空", role: .destructive) { confirm = true } }
                 .confirmationDialog("清除所有工作紀錄？", isPresented: $confirm) { Button("清除", role: .destructive) { perform { try SharedStore.live().delete() } } }
                 .onAppear { perform {} }

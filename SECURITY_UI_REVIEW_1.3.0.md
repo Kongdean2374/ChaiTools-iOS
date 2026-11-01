@@ -12,7 +12,7 @@
 
 | 邊界 | 實作 |
 | --- | --- |
-| 主 App 普通輸入／貼上 | SafeTextInput 的 UITextViewDelegate 在緩衝區變更前拒絕；PasteButton 在賦值前驗證；進階設定／工具欄位亦使用同一輸入元件 |
+| 主 App 普通輸入／貼上 | SafeTextInput 的 UITextViewDelegate 在緩衝區變更前拒絕；PasteButton 在賦值前驗證；進階設定／工具欄位／搜尋亦使用同一輸入元件 |
 | 鍵盤貼上／選取 | 先驗證再更新 published state；選取上下文只留雜湊，不保存周邊原文；拒絕含憑證的選取 |
 | 現用與舊金鑰 | 常見前綴形狀＋去除空白／控制／format 字元後檢查；啟用時本機讀取憑證建立 SHA-256 指紋，之後輸入檢查不需讀取完整金鑰；刪除後保留受保護的指紋 |
 | HTTP | 最終組裝 JSON 的名稱、字串與巢狀值全檢查；真金鑰只進固定 OpenAI HTTPS 的 Authorization header |
@@ -30,6 +30,8 @@
 已核對 StorageLocation、兩個 entitlements、Config.xcconfig、project.yml 及 build／verify 腳本：App 與 extension 使用同一 `SHARED_APP_GROUP`，CI 仍只輸出無簽章 App＋Keyboard appex。設定檔一致不會替裝置取得 Apple 授權。
 
 要讓鍵盤讀到同一秘密，最終安裝的 App 與 extension 都必須被系統允許相同 App Group，鍵盤另外需完整取用；實際執行時須取得共同 container URL。單靠 unsigned IPA **無法保證**這些條件。主 App fallback 仍只在主 App 私有 Application Support；extension 不建立假共享空間。不以 Keychain、明文 defaults、URL query 或剪貼簿繞過。
+
+無法取得共享容器時，鍵盤不能得知主 App 非標準格式金鑰的指紋；常見 OpenAI 憑證形狀仍會被攔截。這是未知秘密辨識的界線，不能聲稱能在隔離狀態識別任意字串秘密。
 
 診斷分為：完整取用、主 App 群組、鍵盤群組、金鑰存在、模型連線。跨 process 無法觀測的狀態標成「請在另一端確認」，不推測成成功。沒有共享／金鑰時鍵盤只列可用的本機計算，AI 不假裝可執行；主 App 仍可生成再複製。
 
@@ -55,7 +57,7 @@
 
 - 本地配置／安全路徑靜態檢查通過；30 個 Swift 檔 Tree-sitter 語法解析通過；Shell 語法通過。這不等同 Swift 型別檢查。
 - 原 10 項核心測試保留；新增 SecurityTests：合成憑證變形、非標準現用指紋、回覆主文／解析／來源、錯誤、持久化與舊檔清除、Published 狀態、HTTP 前後攔截、聊天修訂取消及選取上下文。
-- CI 必須先 `swift test` 再 Xcode Release iphoneos 編譯、IPA 結構與 arm64／平台／版本檢查。**本版 CI 結果待實際執行後填寫。**
+- CI 必須先 `swift test` 再 Xcode Release iphoneos 編譯、IPA 結構與 arm64／平台／版本檢查。主改版 `192b969` 已通過 [Actions 41280795252](https://github.com/Kongdean2374/ChaiTools-iOS/actions/runs/41280795252)：20 項核心與安全測試（0 失敗）、iOS 編譯、IPA 驗證及產物上傳均成功。後續收尾（搜尋的原生預先攔截、回覆二次解析檢查、重新啟用時檢查暫存、剪貼簿操作）另送最新 main 建置；其結果不得借用前一次成功。
 - S01–S06 的核心防線由合成資料自動測試；真機剪貼簿、UITextView delegate、主 App／鍵盤共享生命週期與輸出手勢仍需裝置驗收。S07 本次不接觸真金鑰，程式不記錄秘密；不能聲稱已查驗使用者過去的外部日誌／帳務。
 
 ## 必須誠實保留的視覺待驗收

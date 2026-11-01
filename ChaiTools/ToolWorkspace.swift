@@ -126,7 +126,7 @@ struct ToolWorkspace: View {
                         Button("複製", systemImage: "doc.on.doc") { export(shareSheet: false) }.buttonStyle(QuietButtonStyle())
                         Button("分享", systemImage: "square.and.arrow.up") { export(shareSheet: true) }.buttonStyle(QuietButtonStyle())
                         Button("編輯") { do { editedText = try model.output(); editing = true } catch { model.error = SensitiveContentGuard.userMessage(error) } }.buttonStyle(QuietButtonStyle()).disabled(model.busy)
-                        Button("重試") { model.run(preferences: preferences, configuration: options.prompt) }.buttonStyle(QuietButtonStyle()).disabled(model.busy)
+                        Button("重新生成") { _ = model.setInstruction(""); model.run(preferences: preferences, configuration: options.prompt) }.buttonStyle(QuietButtonStyle()).disabled(model.busy)
                     }
                 }
                 ScrollView(.horizontal, showsIndicators: false) {

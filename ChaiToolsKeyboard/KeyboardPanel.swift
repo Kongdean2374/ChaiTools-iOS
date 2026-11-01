@@ -9,7 +9,8 @@ struct KeyboardPanel: View {
             toolbar
             Divider().opacity(0.25)
             Group {
-                if bridge.showingInformation { information }
+                if bridge.loadingPreferences { ProgressView("準備安全工作區") }
+                else if bridge.showingInformation { information }
                 else if let model = bridge.model { KeyboardWorkspace(bridge: bridge, model: model) }
                 else { home }
             }.frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
@@ -22,7 +23,7 @@ struct KeyboardPanel: View {
             if bridge.model != nil || bridge.showingAllTools {
                 Button { bridge.home() } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.accessibilityLabel("返回工具首頁")
             }
-            Text(bridge.model?.task.tool.name ?? (bridge.showingAllTools ? "全部工具" : "ChaiTools")).font(.subheadline.weight(.semibold)).lineLimit(1)
+            Text(bridge.loadingPreferences ? "ChaiTools" : bridge.model?.task.tool.name ?? (bridge.showingAllTools ? "全部工具" : "ChaiTools")).font(.subheadline.weight(.semibold)).lineLimit(1)
             Spacer(minLength: 2)
             Button { bridge.showingInformation.toggle() } label: {
                 CTStatusPill(text: bridge.statusLabel).frame(minHeight: 44)
