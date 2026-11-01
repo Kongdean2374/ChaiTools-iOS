@@ -51,6 +51,7 @@ struct SelectionSnapshot {
     var snapshot: SelectionSnapshot?
     func refresh() {
         fullAccess = controller?.hasFullAccess ?? false
+        preferences = Preferences()
         guard fullAccess else { status = "AI 需允許完整取用；本機計算仍可使用。"; return }
         do { preferences = try SharedStore.live().preferences(); status = "只有按下執行才送出文字。" } catch { status = error.localizedDescription }
     }

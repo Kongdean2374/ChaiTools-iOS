@@ -2,16 +2,13 @@
 import Foundation
 import Darwin
 
-/// Private App Group storage for the host app and its keyboard only.
+/// Protected app-private storage; uses the shared container only when available.
 /// iOS Data Protection encrypts the file at rest; no Keychain or embedded crypto key.
 enum CredentialStore {
     private static func directory() throws -> URL {
-        guard let group = Bundle.main.object(forInfoDictionaryKey: "SharedAppGroup") as? String,
-              let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) else {
-            throw ChaiError.message("無法存取 App 私有共享空間，請確認 App 與鍵盤具有一致的 App Group 權限。")
-        }
-        return container.appendingPathComponent("PrivateCredentials", isDirectory: true)
+        try StorageLocation.current().url.appendingPathComponent("PrivateCredentials", isDirectory: true)
     }
+
     private static func prepare(_ folder: URL) throws {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.protectionKey: FileProtectionType.complete, .posixPermissions: 0o700])
         try FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete, .posixPermissions: 0o700], ofItemAtPath: folder.path)

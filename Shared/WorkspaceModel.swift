@@ -49,6 +49,9 @@ import SwiftUI
         task.selected = index; result = task.answer?.text ?? ""; status = "已切換至第 \(index + 1) 版。"; persist()
     }
     func persist(manual: Bool = false) {
+        // A keyboard without sharing can still compute/copy locally. It cannot
+        // save history, and must not turn a successful local calculation into an error.
+        if Bundle.main.bundleURL.pathExtension == "appex", StorageLocation.sharedContainer == nil, !manual { return }
         do {
             let store = try SharedStore.live()
             guard try store.preferences().history else {

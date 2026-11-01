@@ -54,3 +54,12 @@ client = (root/'Shared/AIClient.swift').read_text()
 assert client.index('CredentialPayloadGuard.validate(body, key: key)') < client.index('request("responses", key: key, body: body)')
 assert not (root/'Shared/Keychain.swift').exists()
 print('PASS: protected credential file configuration, no Keychain reads/writes, payload guard before network')
+
+routing = (root/'Shared/StorageLocation.swift').read_text()
+assert 'applicationSupportDirectory' in routing
+assert 'guard !isExtension else' in routing
+assert 'StorageLocation.current().url' in (root/'Shared/CredentialStore.swift').read_text()
+assert 'StorageLocation.current().url' in (root/'Shared/Storage.swift').read_text()
+assert 'cleanupError' not in (root/'ChaiTools/ChaiToolsApp.swift').read_text()
+assert 'try LegacyCredentialCleanup.runOnce()' not in source
+print('PASS: shared routing for key/preferences/history, host local fallback, extension isolation, nonblocking legacy cleanup')

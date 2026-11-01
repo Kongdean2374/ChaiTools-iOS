@@ -18,6 +18,11 @@ struct SettingsView: View {
                         }
                     }.padding(.vertical, 6)
                 }
+                Section("儲存與鍵盤") {
+                    Label(model.sharingAvailable ? "可與鍵盤共用" : "主 App 獨立儲存", systemImage: model.sharingAvailable ? "keyboard" : "iphone")
+                    Text(model.sharingAvailable ? "金鑰、偏好與紀錄可供鍵盤使用；鍵盤仍需完整取用權限。" : "目前沒有鍵盤共享權限，已改用 App 本機儲存。你仍可儲存金鑰、測試 API、使用所有主 App 工具及工作紀錄；鍵盤 AI 暫不可用。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 credentials
                 preferences
                 Section("隱私與紀錄") {
@@ -29,6 +34,9 @@ struct SettingsView: View {
                 }
                 Section("使用與關於") {
                     NavigationLink { KeyboardGuideView() } label: { Label("啟用與使用 AI 鍵盤", systemImage: "keyboard") }
+                    if let message = model.legacyCleanupMessage {
+                        DisclosureGroup("舊版資料清理狀態") { Text(message).font(.caption).foregroundStyle(.secondary) }
+                    }
                     HStack { Text("版本"); Spacer(); Text(AppVersion.display).foregroundStyle(.secondary) }
                     Text("原生 AI 工作台 · 由你決定何時送出").font(.caption).foregroundStyle(.secondary)
                 }
@@ -154,9 +162,9 @@ struct PrivacyGuideView: View {
     var body: some View {
         List {
             Section("只處理你主動送出的文字") { Text("只有按下執行時，選定內容與必要指令才會傳送至 OpenAI。鍵盤不會自動讀取剪貼簿，不會擷取整個聊天紀錄。") }
-            Section("本機保存") { Text("金鑰只保存在 App 私有共享容器的檔案，使用 iOS 完整檔案保護（鎖屏不可讀），排除備份。刪除 App 時會隨本 App 的容器清除；『卸載 App』會保留資料，不等同刪除。紀錄預設關閉；啟用後保留 7 天、50 筆，可隨時清除。沒有自建雲端資料庫或分析 SDK。") }
+            Section("本機保存") { Text("金鑰保存在 App 的私有檔案；有共享權限時使用共享容器，否則使用主 App 本機空間，使用 iOS 完整檔案保護（鎖屏不可讀），排除備份。刪除 App 時會隨本 App 的容器清除；『卸載 App』會保留資料，不等同刪除。紀錄預設關閉；啟用後保留 7 天、50 筆，可隨時清除。沒有自建雲端資料庫或分析 SDK。") }
             Section("API 與費用") { Text("使用 store=false，但不代表 OpenAI 零資料保留。費用依帳號與模型計算；App 顯示的 token 用量不是帳務餘額。") }
-            Section("金鑰保護") { Text("金鑰不進提示詞、工作紀錄、匯出或鍵盤插入；只用於 OpenAI HTTPS 授權。檔案保護無法消除裝置遭入侵的風險。App 與鍵盤的共享權限必須一致；讀寫失敗會顯示原因，不會假報成功。") }
+            Section("金鑰保護") { Text("金鑰不進提示詞、工作紀錄、匯出或鍵盤插入；只用於 OpenAI HTTPS 授權。檔案保護無法消除裝置遭入侵的風險。主 App 不依賴共享權限；鍵盤需有一致的共享權限才能共用。讀寫失敗會顯示原因，不會假報成功。") }
         }.navigationTitle("資料與隱私").navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -239,7 +247,7 @@ struct ManageToolsView: View {
                 .onAppear { do { tools = try SharedStore.live().preferences().tools } catch { status = error.localizedDescription } }
         }
     }
-    private func save() { do { try SharedStore.live().updatePreferences { $0.tools = tools }; status = "工具設定已儲存；重新開啟鍵盤後同步。" } catch { status = error.localizedDescription } }
+    private func save() { do { try SharedStore.live().updatePreferences { $0.tools = tools }; status = try StorageLocation.current().isShared ? "工具設定已儲存；重新開啟鍵盤後同步。" : "工具設定已儲存在主 App；此版本無法與鍵盤共用。" } catch { status = error.localizedDescription } }
 }
 struct ToolEditor: View {
     @Environment(\.dismiss) private var dismiss

@@ -6,7 +6,6 @@ import UIKit
 }
 struct RootView: View {
     @AppStorage("welcomed") private var welcomed = false
-    @State private var cleanupError = ""
     var body: some View {
         TabView {
             ToolListView().tabItem { Label("工具", systemImage: "square.grid.2x2") }
@@ -15,13 +14,7 @@ struct RootView: View {
             SettingsView().tabItem { Label("設定", systemImage: "gearshape") }
         }
         .tint(.teal)
-        .task {
-            do { try LegacyCredentialCleanup.runOnce() }
-            catch { cleanupError = error.localizedDescription }
-        }
-        .safeAreaInset(edge: .top) {
-            if !cleanupError.isEmpty { NoticeCard(notice: OperationNotice(title: "舊版金鑰清除未完成", message: cleanupError, kind: .failure)).padding().background(.regularMaterial) }
-        }
+        .task { _ = LegacyCredentialCleanup.runOnce() }
         .sheet(isPresented: Binding(get: { !welcomed }, set: { welcomed = !$0 })) {
             VStack(spacing: 24) {
                 BrandMark(size: 88)

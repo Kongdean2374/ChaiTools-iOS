@@ -6,6 +6,8 @@ import UIKit
     @Published var key = "" { didSet { pasteNotice = nil } }
     @Published var pasteNotice: OperationNotice?
     @Published var hasKey = false
+    @Published var sharingAvailable = false
+    @Published var legacyCleanupMessage: String?
     @Published var models: [String] = []
     @Published var notice: OperationNotice?
     @Published var alert: OperationNotice?
@@ -16,6 +18,9 @@ import UIKit
     var busy: Bool { activity != nil }
 
     func load() {
+        legacyCleanupMessage = LegacyCredentialCleanup.runOnce()
+        do { sharingAvailable = try StorageLocation.current().isShared }
+        catch { finish("無法存取儲存空間", error.localizedDescription, kind: .failure, showAlert: false) }
         do { preferences = try SharedStore.live().preferences() }
         catch { finish("無法讀取偏好", error.localizedDescription, kind: .failure, showAlert: false) }
         do { hasKey = try CredentialStore.hasKey() }
@@ -55,7 +60,7 @@ import UIKit
         guard !busy else { return }
         do {
             try CredentialStore.delete(); hasKey = false; key = ""; models = []
-            try LegacyCredentialCleanup.runOnce()
+            legacyCleanupMessage = LegacyCredentialCleanup.runOnce()
             finish("金鑰已刪除", "之後的 AI 請求需要重新設定金鑰。本機計算仍可使用。", kind: .success)
         } catch { finish("無法刪除金鑰", error.localizedDescription, kind: .failure) }
     }
@@ -97,7 +102,7 @@ import UIKit
             guard !model.isEmpty else { throw ChaiError.message("模型 ID 不能空白") }
             try SharedStore.live().updatePreferences { $0.model = model; $0.language = preferences.language; $0.context = preferences.context }
             preferences.model = model
-            finish("偏好已儲存", "模型、語言與語境已更新；重新開啟鍵盤後會讀取這些設定。", kind: .success)
+            finish("偏好已儲存", sharingAvailable ? "模型、語言與語境已更新；重新開啟鍵盤後會讀取這些設定。" : "模型、語言與語境已儲存在主 App。此安裝版本無法與鍵盤共用資料。", kind: .success)
         } catch { finish("偏好儲存失敗", error.localizedDescription, kind: .failure) }
     }
     func setHistory(_ enabled: Bool) {

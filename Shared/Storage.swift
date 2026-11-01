@@ -9,9 +9,7 @@ final class SharedStore {
     let directory: URL
     static func live() throws -> SharedStore {
         #if os(iOS)
-        let group = Bundle.main.object(forInfoDictionaryKey: "SharedAppGroup") as? String ?? "group.cc.chaihome.ChaiTools"
-        guard let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) else { throw ChaiError.message("無法存取 App Group，請確認 App 與鍵盤的共享權限一致。") }
-        return try SharedStore(directory: url)
+        return try SharedStore(directory: StorageLocation.current().url)
         #else
         throw ChaiError.message("此環境沒有 App Group")
         #endif

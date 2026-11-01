@@ -54,9 +54,9 @@ bash scripts/build-unsigned-ipa.sh
 
 ## 資料與隱私
 
-自 1.1.1 起，依使用者要求不再使用 Keychain 保存金鑰。`CredentialStore` 在本 App 的 App Group 私有目錄 `PrivateCredentials` 使用 iOS `completeFileProtection` 寫入檔案：系統加密、鎖屏不可讀、目錄 0700／檔案 0600、原子寫入、跨程序鎖、排除備份。App 與鍵盤只共用此私有容器，不放在一般偏好／歷史 JSON。正常刪除本 App（同時移除其鍵盤）會由 iOS 刪除其私有容器；『卸載 App』會保留資料，並不等同『刪除 App』。不要讓其他 App 共用此 App Group，否則群組容器生命週期取決於最後一個成員 App。
+自 1.1.1 起，依使用者要求不再使用 Keychain 保存金鑰。1.1.2 起，`StorageLocation` 統一決定金鑰、偏好及歷史的位置：有共享權限時沿用 App Group，缺少共享權限時主 App 使用自身 Application Support/ChaiToolsPrivate；鍵盤無權限時拒絕共用並提示使用主 App。`CredentialStore` 在所選容器的私有目錄 `PrivateCredentials` 使用 iOS `completeFileProtection` 寫入檔案：系統加密、鎖屏不可讀、目錄 0700／檔案 0600、原子寫入、跨程序鎖、排除備份。App 與鍵盤只共用此私有容器，不放在一般偏好／歷史 JSON。正常刪除本 App（同時移除其鍵盤）會由 iOS 刪除其私有容器；『卸載 App』會保留資料，並不等同『刪除 App』。不要讓其他 App 共用此 App Group，否則群組容器生命週期取決於最後一個成員 App。
 
-1.1.0 以前的舊金鑰由主 App 的 `LegacyCredentialCleanup` 以精確 service/account/group 範圍執行一次刪除，不讀出或轉存。清除失敗會明確提示並在下次啟動重試。升級後請重新貼上與儲存。未簽名產物不會自行授予 App Group 權限；實際 App 與鍵盤需有一致有效的共享權限，否則明確報錯。
+1.1.0 以前的舊金鑰由主 App 的 `LegacyCredentialCleanup` 以精確 service/account/group 範圍執行一次刪除，不讀出或轉存。無權限時跳過清除、不宣稱成功；清理狀態放在設定的「舊版資料清理狀態」中，不阻擋本機功能，之後有權限時再嘗試。升級後請重新貼上與儲存。未簽名產物不會自行授予 App Group 權限；主 App 無共享權限時仍可獨立使用；只有鍵盤共用資料需要一致有效的共享權限。
 
 預設不永久儲存文字；啟用紀錄後最多 50 筆、每筆 30 版本、保留 7 天，到期在下次存取時清除。關閉紀錄即清除既有資料，亦可逐筆或全部刪除。App Group 使用檔案鎖、原子替換、資料保護與排除備份；不把金鑰放入共享 JSON。正在編輯的內容僅留在記憶體，Extension 被回收可能丟失未儲存草稿。
 
@@ -93,7 +93,7 @@ bash scripts/build-unsigned-ipa.sh
 
 新增真正的 AppIcon 資源、品牌首頁、工具搜尋與說明、鍵盤指南和隱私頁。原創圖示可由 `scripts/generate-icon.py` 重現（僅重繪需 Pillow；CI 直接使用已提交 PNG，不需安裝 Pillow）。詳見 [CHANGELOG.md](CHANGELOG.md)。
 
-每次功能更新須遞增可見版本：`python3 scripts/bump-version.py 1.1.2`。腳本要求新版本大於目前版本，更新 VERSION 與 project.yml；App／Extension 共用版本，設定頁讀取 Bundle，Build Number 由 Actions run number 遞增。不以重跑 CI 代替發行版本更新。
+每次功能更新須遞增可見版本：`python3 scripts/bump-version.py 1.1.3`。腳本要求新版本大於目前版本，更新 VERSION 與 project.yml；App／Extension 共用版本，設定頁讀取 Bundle，Build Number 由 Actions run number 遞增。不以重跑 CI 代替發行版本更新。
 
 本次新增檢查：圖示 1024×1024、RGB 無透明、asset manifest、版本一致、Shell／Python 語法。程式碼已人工檢查，但此環境沒有 Swift／Xcode，尚不能宣稱編譯或真機已驗證。依使用者要求不新增 GitHub App／UI 測試，也不持續等待產物。
 
@@ -105,3 +105,14 @@ bash scripts/build-unsigned-ipa.sh
 UI 只查詢金鑰檔案是否存在；使用者主動執行 AI／模型掃描／連線測試時才讀取金鑰，另在儲存時讀回驗證。金鑰只放在固定 OpenAI HTTPS 端點的 Authorization header，不進提示詞或模型請求本文；本文、工具提示或模型設定若包含目前金鑰，`CredentialPayloadGuard` 會在建立網路請求前拒絕送出。不能宣稱能防禦所有編碼或使用者主動改寫的金鑰內容，也不能保護遭攻破的裝置。
 
 本地已完成配置與安全路徑靜態檢查；新增輸入正規化／敏感資料拒送的 XCTest 留在倉庫供手動執行，尚未在此無 Swift/Xcode 環境執行。CI 仍只編譯、打包及驗證產物；貼上、完整檔案保護、刪除 App 後重裝等行為待真機確認。
+
+
+## 1.1.2 缺少共享權限時的獨立模式
+
+修正主 App 因缺少 App Group 而無法儲存金鑰／偏好／歷史的問題。設定頁會顯示「主 App 獨立儲存」或「可與鍵盤共用」。獨立模式下可以貼上、儲存／刪除金鑰、測試 API、掃描模型、使用工具與歷史；資料仍在 App 沙盒並受到原有檔案保護、備份排除與刪除生命週期管理。
+
+「允許完整取用」是使用者給鍵盤的網路及資料存取許可；App Group 是系統授予 App／Extension 的共用容器資格，兩者不同，開關無法補上缺少的資格。不嘗試繞過 iOS 沙盒或把金鑰交給剪貼簿／網址。沒有共享權限時鍵盤 AI 不可用，使用主 App 生成後複製；鍵盤本機計算仍可用。
+
+升級保留已有共享容器資料的原路徑。獨立與共享空間不會自動合併或互相複製金鑰；若日後安裝版本的共享資格改變，請確認設定頁的儲存模式，必要時重新儲存金鑰與偏好。舊版清理不再造成啟動警告或讓新金鑰刪除假報失敗；無法清理時不聲稱已刪除舊記錄。
+
+已新增純邏輯回歸測試：主 App 無群組時選本機路徑、偏好／歷史可跨 store 重讀、有群組時 App／鍵盤選相同路徑、Extension 無群組時不得建立假共用空間。此環境無 Swift/Xcode，測試程式留供手動執行；本地執行靜態配置與路徑檢查，實際編譯與真機儲存待驗證。

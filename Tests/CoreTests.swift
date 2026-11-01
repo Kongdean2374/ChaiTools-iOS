@@ -5,6 +5,32 @@ import FoundationNetworking
 #endif
 
 final class CoreTests: XCTestCase {
+    func testMissingGroupStillAllowsHostStorageButRejectsExtension() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let local = root.appendingPathComponent("HostPrivate")
+        let group = root.appendingPathComponent("Group")
+        let fallback = try StorageLocation.resolve(shared: nil, local: local, isExtension: false)
+        XCTAssertEqual(fallback.url, local)
+        XCTAssertFalse(fallback.isShared)
+        let first = try SharedStore(directory: fallback.url)
+        try first.updatePreferences { $0.model = "saved-in-host"; $0.history = true }
+        var task = WorkTask(tool: Tool.defaults[0], source: "local source")
+        task.append(Answer(text: "local result"), instruction: "test")
+        try first.save(task)
+        let reopened = try SharedStore(directory: fallback.url)
+        XCTAssertEqual(try reopened.preferences().model, "saved-in-host")
+        XCTAssertEqual(try reopened.history().first?.answer?.text, "local result")
+        XCTAssertThrowsError(try StorageLocation.resolve(shared: nil, local: local, isExtension: true))
+        XCTAssertThrowsError(try StorageLocation.resolve(shared: nil, local: nil, isExtension: false))
+        let host = try StorageLocation.resolve(shared: group, local: local, isExtension: false)
+        let keyboard = try StorageLocation.resolve(shared: group, local: nil, isExtension: true)
+        XCTAssertEqual(host, keyboard)
+        XCTAssertTrue(host.isShared)
+        XCTAssertEqual(host.url, group)
+        // Location resolution must not create a fake, isolated extension container.
+        XCTAssertFalse(FileManager.default.fileExists(atPath: group.path))
+    }
     func testKeyInputPreservesValueAndRejectsInvalidPaste() throws {
         XCTAssertEqual(try APIKeyInput.normalize("  sample-credential-value\n"), "sample-credential-value")
         for input in ["", " \n", "two words", "a\nb", "a\0b", String(repeating: "x", count: 8193)] {
