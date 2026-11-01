@@ -14,7 +14,7 @@ import SwiftUI
         self.task = task ?? WorkTask(tool: tool, source: "")
         result = task?.answer?.text ?? ""
     }
-    func run(preferences: Preferences, networkAllowed: Bool = true, revision: Bool = false) {
+    func run(preferences: Preferences, networkAllowed: Bool = true, revision: Bool = false, configuration: String = "") {
         guard !busy else { return }
         error = ""; status = ""
         let input = revision ? result : task.source
@@ -25,7 +25,7 @@ import SwiftUI
         guard networkAllowed else { error = "請在 iOS 設定 → 一般 → 鍵盤 → ChaiTools 允許完整取用。"; return }
         busy = true
         let id = UUID(); requestID = id
-        let requestInstruction = instruction
+        let requestInstruction = instruction + "\n" + configuration
         let requestTool = task.tool
         pending = Task {
             defer { if requestID == id { busy = false; requestID = nil; pending = nil } }

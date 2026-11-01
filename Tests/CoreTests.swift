@@ -5,6 +5,19 @@ import FoundationNetworking
 #endif
 
 final class CoreTests: XCTestCase {
+    func testKeyboardGeometryIsBoundedAcrossSupportedSizes() {
+        for width in [CGFloat(320), 375, 390, 402, 430, 600] {
+            let normal = KeyboardLayoutMetrics.contentHeight(width: width, landscape: false, accessibility: false)
+            XCTAssertTrue((260...305).contains(normal))
+            let largeText = KeyboardLayoutMetrics.contentHeight(width: width, landscape: false, accessibility: true)
+            XCTAssertGreaterThan(largeText, normal)
+            XCTAssertLessThanOrEqual(largeText, 330)
+        }
+        for width in [CGFloat(568), 667, 812, 874, 932] {
+            let landscape = KeyboardLayoutMetrics.contentHeight(width: width, landscape: true, accessibility: false)
+            XCTAssertTrue((190...230).contains(landscape))
+        }
+    }
     func testMissingGroupStillAllowsHostStorageButRejectsExtension() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

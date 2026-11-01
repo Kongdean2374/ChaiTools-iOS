@@ -63,3 +63,19 @@ assert 'StorageLocation.current().url' in (root/'Shared/Storage.swift').read_tex
 assert 'cleanupError' not in (root/'ChaiTools/ChaiToolsApp.swift').read_text()
 assert 'try LegacyCredentialCleanup.runOnce()' not in source
 print('PASS: shared routing for key/preferences/history, host local fallback, extension isolation, nonblocking legacy cleanup')
+
+controller = (root/'ChaiToolsKeyboard/KeyboardViewController.swift').read_text()
+assert controller.count('UIHostingController(rootView:') == 1
+assert 'equalToConstant: 360' not in controller
+assert 'globe.heightAnchor' not in controller and 'globe.topAnchor' not in controller
+assert 'safeAreaLayoutGuide' in controller and 'needsInputModeSwitchKey' in controller
+assert 'handleInputModeList' in controller
+metrics = (root/'Shared/KeyboardLayoutMetrics.swift').read_text()
+assert 'tool' not in metrics.split('enum KeyboardLayoutMetrics')[1].lower()
+keyboard = (root/'ChaiToolsKeyboard/KeyboardPanel.swift').read_text()
+assert 'accessibilityReduceMotion' in keyboard and 'prefix(8)' in keyboard
+assert 'TextField(' not in keyboard and 'TextEditor(' not in keyboard
+editor = (root/'ChaiTools/ToolWorkspace.swift').read_text()
+assert 'Form {' not in editor and 'ShareLink(item: model.result)' in editor
+assert 'configuration: options.prompt' in editor
+print('PASS: single keyboard host, no fixed 360/globe row, geometry-only sizing, real editor/share and keyboard paste paths')

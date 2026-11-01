@@ -8,7 +8,7 @@ ChaiTools 是 iOS 17+ 原生 SwiftUI 工作台與 UIKit 第三方 AI 鍵盤。�
 
 成功後，在該次 run 的 **Artifacts → ChaiTools-unsigned-IPA** 下載，裡面包含 **ChaiTools-unsigned.ipa** 與 SHA-256。保留 14 天。不需要設定 GitHub Secrets。尚在建置或失敗時沒有可下載的有效 IPA。
 
-依使用者要求，CI 不啟用 App／UI 測試，也不以單元測試作為打包前置；直接使用 XcodeGen 產生工程，建置 Release / iphoneos / arm64 App 與內嵌 Keyboard Extension，關閉程式碼簽署。腳本檢查 ZIP、Mach-O、iOS 平台、版本、Bundle ID、鍵盤服務及完整取用設定後才上傳。任一步驟失敗即使工作流程失敗，不以空 ZIP 交付。
+依 1.2.0 改版計劃，CI 執行不含 API 金鑰的核心單元測試，再使用 XcodeGen 產生工程；不啟用 App／UI 測試或模擬器，建置 Release / iphoneos / arm64 App 與內嵌 Keyboard Extension，關閉程式碼簽署。腳本檢查 ZIP、Mach-O、iOS 平台、版本、Bundle ID、鍵盤服務及完整取用設定後才上傳。任一步驟失敗即使工作流程失敗，不以空 ZIP 交付。
 
 ## 已實作的流程
 
@@ -93,7 +93,7 @@ bash scripts/build-unsigned-ipa.sh
 
 新增真正的 AppIcon 資源、品牌首頁、工具搜尋與說明、鍵盤指南和隱私頁。原創圖示可由 `scripts/generate-icon.py` 重現（僅重繪需 Pillow；CI 直接使用已提交 PNG，不需安裝 Pillow）。詳見 [CHANGELOG.md](CHANGELOG.md)。
 
-每次功能更新須遞增可見版本：`python3 scripts/bump-version.py 1.1.3`。腳本要求新版本大於目前版本，更新 VERSION 與 project.yml；App／Extension 共用版本，設定頁讀取 Bundle，Build Number 由 Actions run number 遞增。不以重跑 CI 代替發行版本更新。
+每次功能更新須遞增可見版本：`python3 scripts/bump-version.py 1.2.1`。腳本要求新版本大於目前版本，更新 VERSION 與 project.yml；App／Extension 共用版本，設定頁讀取 Bundle，Build Number 由 Actions run number 遞增。不以重跑 CI 代替發行版本更新。
 
 本次新增檢查：圖示 1024×1024、RGB 無透明、asset manifest、版本一致、Shell／Python 語法。程式碼已人工檢查，但此環境沒有 Swift／Xcode，尚不能宣稱編譯或真機已驗證。依使用者要求不新增 GitHub App／UI 測試，也不持續等待產物。
 
@@ -116,3 +116,14 @@ UI 只查詢金鑰檔案是否存在；使用者主動執行 AI／模型掃描�
 升級保留已有共享容器資料的原路徑。獨立與共享空間不會自動合併或互相複製金鑰；若日後安裝版本的共享資格改變，請確認設定頁的儲存模式，必要時重新儲存金鑰與偏好。舊版清理不再造成啟動警告或讓新金鑰刪除假報失敗；無法清理時不聲稱已刪除舊記錄。
 
 已新增純邏輯回歸測試：主 App 無群組時選本機路徑、偏好／歷史可跨 store 重讀、有群組時 App／鍵盤選相同路徑、Extension 無群組時不得建立假共用空間。此環境無 Swift/Xcode，測試程式留供手動執行；本地執行靜態配置與路徑檢查，實際編譯與真機儲存待驗證。
+
+
+## 1.2.0 原生 UI／UX 重構
+
+本次合併兩份改版計劃。鍵盤移除固定 360pt 根高度與獨立 globe 底列，使用一次建立的 HostingController、幾何高度提案與安全區約束。首頁先顯示常用八格，其餘走全部工具；頁面共用頂列、中央捲動區與固定動作列。中文來源／主題／追加指令／手動改稿均有貼上路徑，不假裝呼叫 Apple 注音。來源與結果分開，詳細解析與引用可展開。成功提示約 3 秒消失，錯誤可收起；Reduce Motion 停用裝飾切換動畫。
+
+主 App 使用共用 Graphite／Soft Indigo tokens，首頁縮為模型狀態、收藏／功能分組與真實最近工作；編輯器不再是大型 Form，改用原文、情境、結果、修訂卡片及固定主要 CTA。保留所有原工具與參數，進階項目可展開設定。結果支援真實複製與 ShareLink，追加指令靠近結果，設定可選擇系統／淺色／深色外觀與觸覺。
+
+主要檔案：`Shared/InterfaceTheme.swift`、`Shared/KeyboardLayoutMetrics.swift`、`Shared/ToolPresentation.swift`；`ChaiToolsKeyboard/KeyboardViewController.swift`、`KeyboardBridge.swift`、`KeyboardPanel.swift`；`ChaiTools/ToolHomeView.swift`、`ToolWorkspace.swift`、`EditorOptions.swift`、`SettingsAndHistory.swift`。檔案均由 XcodeGen 的來源目錄規則納入對應 Target。
+
+測試、對比值、設計高度提案與待測矩陣見 [UI_REVIEW_1.2.0.md](UI_REVIEW_1.2.0.md)。純邏輯 XCTest 在 CI 執行；不啟動 App／UI 自動測試、不使用真實 API 金鑰。無實體裝置／模擬器，不宣稱已消除所有跨鍵盤跳動，也不提供虛構截圖或高度測量。

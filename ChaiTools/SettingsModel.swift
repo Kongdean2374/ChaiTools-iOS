@@ -37,7 +37,7 @@ import UIKit
             let clean = try APIKeyInput.normalize(clipboard)
             key = clean
             pasteNotice = OperationNotice(title: "金鑰已貼入", message: "已填入 \(clean.count) 個字元並保持遮罩。請接著點『儲存金鑰』；尚未儲存或測試連線。", kind: .success)
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            AppHaptics.result(success: true)
         } catch {
             pasteNotice = OperationNotice(title: "未貼上金鑰", message: error.localizedDescription + " 原輸入已保留。", kind: .failure)
         }
@@ -137,7 +137,7 @@ import UIKit
         let update = OperationNotice(title: title, message: message, kind: kind)
         notice = update
         if showAlert { alert = update }
-        UINotificationFeedbackGenerator().notificationOccurred(kind == .failure ? .error : kind == .success ? .success : .warning)
+        AppHaptics.result(success: kind != .failure)
     }
     static func errorMessage(_ error: Error) -> String {
         if let e = error as? URLError {

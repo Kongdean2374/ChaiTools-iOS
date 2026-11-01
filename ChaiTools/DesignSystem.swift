@@ -7,7 +7,7 @@ struct OperationNotice: Identifiable, Equatable {
     var message: String
     var kind: Kind = .info
     var symbol: String { kind == .success ? "checkmark.circle.fill" : kind == .failure ? "exclamationmark.triangle.fill" : "info.circle.fill" }
-    var color: Color { kind == .success ? .teal : kind == .failure ? .orange : .secondary }
+    var color: Color { kind == .success ? InterfaceTheme.accent : kind == .failure ? .orange : .secondary }
 }
 struct NoticeCard: View {
     let notice: OperationNotice
@@ -37,29 +37,5 @@ enum AppVersion {
         let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
         let b = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
         return "\(v)（\(b)）"
-    }
-}
-extension Tool {
-    var subtitle: String {
-        switch id {
-        case "translate": return "自然譯文與語境解析"
-        case "rewrite": return "保留原意，調整表達"
-        case "generate": return "從想法開始寫作"
-        case "search": return "查詢資訊，保留來源"
-        case "calculate": return "離線算式與單位換算"
-        case "language": return "讀懂語法、口語與俚語"
-        case "summary": return "長文重點，一目了然"
-        default: return "你的提示詞，你的工作方式"
-        }
-    }
-    var accent: Color {
-        switch id {
-        case "translate", "language": return .teal
-        case "rewrite", "generate": return .indigo
-        case "search": return .blue
-        case "calculate": return .orange
-        case "summary": return .purple
-        default: return .pink
-        }
     }
 }
