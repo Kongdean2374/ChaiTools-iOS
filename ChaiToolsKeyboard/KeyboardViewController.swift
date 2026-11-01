@@ -155,6 +155,7 @@ struct KeyboardWorkspace: View {
                         }
                     }
                     if !model.error.isEmpty { Text(model.error).foregroundStyle(.red).font(.caption) }
+                    else if !model.status.isEmpty { Text(model.status).foregroundStyle(.teal).font(.caption) }
                 }.padding(.horizontal, 10)
             }
             HStack {

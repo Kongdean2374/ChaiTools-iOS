@@ -5,3 +5,5 @@ dist/
 *.xcuserstate
 xcuserdata/
 ChaiTools.xcodeproj/
+__pycache__/
+*.pyc

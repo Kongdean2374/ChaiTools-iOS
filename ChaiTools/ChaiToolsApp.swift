@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 @main struct ChaiToolsApp: App {
     var body: some Scene { WindowGroup { RootView() } }
@@ -15,7 +16,7 @@ struct RootView: View {
         .tint(.teal)
         .sheet(isPresented: Binding(get: { !welcomed }, set: { welcomed = !$0 })) {
             VStack(spacing: 24) {
-                Image(systemName: "keyboard").font(.system(size: 64)).foregroundStyle(.teal)
+                BrandMark(size: 88)
                 Text("歡迎使用 ChaiTools").font(.largeTitle.bold())
                 Text("原生 AI 工作台與工具型鍵盤\n貼上 → 處理 → 預覽 → 複製或插入").multilineTextAlignment(.center)
                 Text("AI 功能會將你主動送出的文字傳至 OpenAI，可能產生 API 費用。預設不保存工作紀錄。沒有金鑰仍可瀏覽與本機計算。")
@@ -27,29 +28,79 @@ struct RootView: View {
 struct ToolListView: View {
     @State private var preferences = Preferences()
     @State private var error = ""
+    @State private var query = ""
+    @State private var hasKey = false
+    @State private var showSettings = false
+    private var visible: [Tool] {
+        preferences.tools.filter { $0.enabled && (query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) || $0.subtitle.localizedCaseInsensitiveContains(query)) }
+            .sorted { $0.favorite && !$1.favorite }
+    }
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Text("把文字，變成你想說的話。").font(.title2.bold())
-                    Text("工具型 AI 工作台 · 由你決定何時送出").foregroundStyle(.secondary)
-                    if !error.isEmpty { Text(error).foregroundStyle(.red) }
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 145))], spacing: 14) {
-                        ForEach(preferences.tools.filter(\.enabled).sorted { $0.favorite && !$1.favorite }) { tool in
+                VStack(alignment: .leading, spacing: 24) {
+                    hero
+                    if !error.isEmpty { NoticeCard(notice: OperationNotice(title: "設定需要確認", message: error, kind: .failure)) }
+                    if !hasKey {
+                        Button { showSettings = true } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "key.fill").font(.title3)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("連接你的 AI").font(.headline)
+                                    Text("設定金鑰後開始使用；本機計算無需連線。點此設定 →").font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 0)
+                            }.padding().background(Color.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+                        }.buttonStyle(.plain)
+                    }
+                    HStack { Text(query.isEmpty ? "選擇你的工具" : "搜尋結果").font(.title3.bold()); Spacer(); Text("\(visible.count) 項").font(.caption).foregroundStyle(.secondary) }
+                    if visible.isEmpty {
+                        ContentUnavailableView("沒有符合的工具", systemImage: "magnifyingglass", description: Text("試試其他關鍵字，或在『我的工具』啟用工具。"))
+                    }
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 14)], spacing: 14) {
+                        ForEach(visible) { tool in
                             NavigationLink { ToolWorkspace(tool: tool) } label: {
-                                VStack(alignment: .leading, spacing: 16) {
-                                    Image(systemName: tool.icon).font(.title)
-                                    Text(tool.name).font(.headline)
-                                    Text(tool.favorite ? "常用工具" : "開啟工具").font(.caption).foregroundStyle(.secondary)
-                                }.frame(maxWidth: .infinity, minHeight: 110, alignment: .leading).padding()
-                                    .background(.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 20))
+                                VStack(alignment: .leading, spacing: 14) {
+                                    HStack {
+                                        Image(systemName: tool.icon).font(.title3.weight(.semibold)).foregroundStyle(tool.accent)
+                                            .frame(width: 44, height: 44).background(tool.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 13))
+                                        Spacer()
+                                        if tool.favorite { Image(systemName: "star.fill").foregroundStyle(.orange).font(.caption) }
+                                    }
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text(tool.name).font(.headline).foregroundStyle(.primary)
+                                        Text(tool.subtitle).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                                    }
+                                    HStack { Text(tool.id == "calculate" ? "支援離線" : "AI 工具").font(.caption2); Spacer(); Image(systemName: "arrow.up.right").font(.caption) }.foregroundStyle(tool.accent)
+                                }.padding(18).frame(maxWidth: .infinity, minHeight: 170, alignment: .topLeading)
+                                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
+                                    .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Color.primary.opacity(0.045), lineWidth: 1))
                             }.buttonStyle(.plain)
                         }
                     }
-                }.padding()
-            }.navigationTitle("ChaiTools")
-                .onAppear { do { preferences = try SharedStore.live().preferences() } catch { self.error = error.localizedDescription } }
+                    NavigationLink { KeyboardGuideView() } label: {
+                        Label("在其他 App 也能使用 · 鍵盤指南", systemImage: "keyboard").font(.subheadline).frame(maxWidth: .infinity).padding()
+                    }.buttonStyle(.bordered)
+                }.padding(20)
+            }.background(Color(uiColor: .systemGroupedBackground))
+                .navigationTitle("ChaiTools")
+                .searchable(text: $query, prompt: "搜尋翻譯、改寫、計算⋯")
+                .sheet(isPresented: $showSettings, onDismiss: { hasKey = (try? Keychain.load().isEmpty) == false }) { SettingsView() }
+                .onAppear {
+                    error = ""
+                    do { preferences = try SharedStore.live().preferences() } catch { self.error = error.localizedDescription }
+                    do { hasKey = !(try Keychain.load()).isEmpty } catch { self.error = error.localizedDescription }
+                }
         }
+    }
+    private var hero: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack { BrandMark(size: 48); Spacer(); Label("你的文字工作台", systemImage: "sparkles").font(.caption.weight(.medium)) }
+            Text("把想法，\n化成好表達。").font(.system(.largeTitle, design: .rounded).bold()).fixedSize(horizontal: false, vertical: true)
+            Text("翻譯、寫作、整理，一處完成。\n先預覽，再由你決定如何使用。").font(.subheadline).opacity(0.85)
+            HStack { Label("主動送出才處理", systemImage: "hand.raised"); Spacer(); Text(preferences.history ? "紀錄已開啟" : "隱私模式") }.font(.caption)
+        }.foregroundStyle(.white).padding(24).frame(maxWidth: .infinity, alignment: .leading)
+            .background(LinearGradient(colors: [Color(red: 0.04, green: 0.27, blue: 0.29), Color(red: 0.06, green: 0.44, blue: 0.43)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 28))
     }
 }
 struct ToolWorkspace: View {
@@ -65,13 +116,15 @@ struct ToolWorkspace: View {
     @State private var correctGrammar = true
     @State private var from = "m"
     @State private var to = "cm"
+    @State private var clearConfirmation = false
     @State private var originalLanguage = "自動偵測"
     init(tool: Tool, task: WorkTask? = nil) { _model = StateObject(wrappedValue: WorkspaceModel(tool: tool, task: task)) }
     var body: some View {
         Form {
             Section(model.task.tool.id == "generate" ? "主題／要求（可不提供原文）" : "來源文字 · \(model.task.source.count) 字") {
-                TextEditor(text: $model.task.source).frame(minHeight: 140)
+                TextEditor(text: $model.task.source).frame(minHeight: 140).disabled(model.busy)
                 PasteButton(payloadType: String.self) { strings in model.task.source = strings.joined(separator: "\n") }
+                    .disabled(model.busy)
                 Text("局部改寫：將要改寫的段落放入來源欄，確認結果後自行替換原文。 ").font(.caption).foregroundStyle(.secondary)
             }
             Section("工具設定") {
@@ -118,9 +171,9 @@ struct ToolWorkspace: View {
             }
             if !model.task.revisions.isEmpty {
                 Section("結果 · 可直接編輯") {
-                    TextEditor(text: $model.result).frame(minHeight: 180)
+                    TextEditor(text: $model.result).frame(minHeight: 180).disabled(model.busy)
                     HStack {
-                        Button("複製") { UIPasteboard.general.string = model.result }
+                        Button("複製") { UIPasteboard.general.string = model.result; model.status = "已複製結果"; UINotificationFeedbackGenerator().notificationOccurred(.success) }
                         Button("儲存編輯版本") { model.saveEdit(model.result) }
                     }
                     ResultDetails(answer: model.task.answer)
@@ -141,8 +194,20 @@ struct ToolWorkspace: View {
                     }
                 }.disabled(model.busy)
             }
-            Section { Button("儲存草稿（需開啟紀錄）") { model.persist() }; Button("清空工作區", role: .destructive) { model.clear() } }
+            Section { Button("儲存草稿（需開啟紀錄）") { model.persist(manual: true) }; Button("清空工作區", role: .destructive) { clearConfirmation = true } }
         }.navigationTitle(model.task.tool.name)
+            .buttonStyle(.borderless)
+            .scrollDismissesKeyboard(.interactively)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if model.busy {
+                    HStack { ProgressView(); Text("正在處理，請稍候⋯").font(.subheadline); Spacer(); Button("取消") { model.cancel() } }.padding().background(.regularMaterial)
+                } else if !model.error.isEmpty || !model.status.isEmpty {
+                    NoticeCard(notice: OperationNotice(title: model.error.isEmpty ? "操作完成" : "需要處理", message: model.error.isEmpty ? model.status : model.error, kind: model.error.isEmpty ? .success : .failure)).padding(.horizontal).padding(.vertical, 6).background(.regularMaterial)
+                }
+            }
+            .confirmationDialog("清空目前原文與所有未儲存版本？", isPresented: $clearConfirmation, titleVisibility: .visible) {
+                Button("清空工作區", role: .destructive) { model.clear() }
+            }
             .onAppear { do { preferences = try SharedStore.live().preferences() } catch { model.error = error.localizedDescription } }
             .onDisappear { model.cancel() }
     }

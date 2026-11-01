@@ -84,3 +84,13 @@ bash scripts/build-unsigned-ipa.sh
 [Apple UITextDocumentProxy](https://developer.apple.com/documentation/uikit/uitextdocumentproxy) · [OpenAI web search](https://developers.openai.com/api/docs/guides/tools-web-search) · [GitHub upload-artifact](https://github.com/actions/upload-artifact)
 
 Keychain 共用依據：[Apple 官方共用 Keychain 說明](https://developer.apple.com/documentation/security/sharing-access-to-keychain-items-among-a-collection-of-apps)。
+
+## 1.1.0 互動與介面更新
+
+設定頁的成功／失敗訊息現在以固定狀態區與結果對話框顯示，網路操作有即時計時與取消。金鑰儲存必須讀回一致才顯示成功；未儲存的新金鑰會要求先儲存，不會默默測試舊金鑰。共享權限錯誤會明確顯示，不能靠介面改版繞過 iOS 權限。
+
+新增真正的 AppIcon 資源、品牌首頁、工具搜尋與說明、鍵盤指南和隱私頁。原創圖示可由 `scripts/generate-icon.py` 重現（僅重繪需 Pillow；CI 直接使用已提交 PNG，不需安裝 Pillow）。詳見 [CHANGELOG.md](CHANGELOG.md)。
+
+每次功能更新須遞增可見版本：`python3 scripts/bump-version.py 1.1.1`。腳本要求新版本大於目前版本，更新 VERSION 與 project.yml；App／Extension 共用版本，設定頁讀取 Bundle，Build Number 由 Actions run number 遞增。不以重跑 CI 代替發行版本更新。
+
+本次新增檢查：圖示 1024×1024、RGB 無透明、asset manifest、版本一致、Shell／Python 語法。程式碼已人工檢查，但此環境沒有 Swift／Xcode，尚不能宣稱編譯或真機已驗證。依使用者要求不新增 GitHub App／UI 測試，也不持續等待產物。

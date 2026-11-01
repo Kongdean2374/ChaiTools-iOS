@@ -4,10 +4,11 @@ cd "$(dirname "$0")/.."
 xcodebuild -version
 swift --version
 xcodebuild -showsdks
+APP_VERSION=$(cat VERSION)
 xcodegen generate
 xcodebuild -project ChaiTools.xcodeproj -scheme ChaiTools -configuration Release \
   -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$PWD/build/DerivedData" \
-  CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER:-1}" \
+  MARKETING_VERSION="$APP_VERSION" CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER:-2}" \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' build
 APP="$PWD/build/DerivedData/Build/Products/Release-iphoneos/ChaiTools.app"
 test -s "$APP/ChaiTools"

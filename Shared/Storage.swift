@@ -24,7 +24,7 @@ final class SharedStore {
         let fd = open(directory.appendingPathComponent("store.lock").path, O_CREAT | O_RDWR, mode_t(0o600))
         guard fd >= 0 else { throw ChaiError.message("無法鎖定共享資料") }
         defer { close(fd) }
-        guard flock(fd, LOCK_EX) == 0 else { throw ChaiError.message("共享資料忙碌") }
+        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { throw ChaiError.message("共享資料正在更新，請稍後再試。") }
         defer { flock(fd, LOCK_UN) }
         return try operation()
     }

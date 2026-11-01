@@ -27,6 +27,8 @@ assert a['CFBundleIdentifier'] == 'cc.chaihome.ChaiTools'
 assert e['CFBundleIdentifier'] == a['CFBundleIdentifier'] + '.Keyboard'
 assert a['CFBundleVersion'] == e['CFBundleVersion']
 assert a['CFBundleShortVersionString'] == e['CFBundleShortVersionString']
+assert (app/'Assets.car').is_file(), 'Missing compiled icon/brand assets'
+assert a.get('CFBundleIcons', {}).get('CFBundlePrimaryIcon', {}).get('CFBundleIconName') == 'AppIcon', 'Missing primary app icon'
 assert e['NSExtension']['NSExtensionPointIdentifier'] == 'com.apple.keyboard-service'
 assert e['NSExtension']['NSExtensionAttributes']['RequestsOpenAccess'] is True
 assert a['SharedAppGroup'] == e['SharedAppGroup']
