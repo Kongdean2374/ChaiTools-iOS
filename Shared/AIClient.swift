@@ -22,19 +22,27 @@ struct AIClient {
         if let body {
             req.httpMethod = "POST"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            try CredentialPayloadGuard.validate(body, key: key)
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
         // Never automatically replay a paid POST: an interrupted response may already be billed.
-        let (data, response) = try await session.data(for: req)
+        let data: Data
+        let response: URLResponse
+        do { (data, response) = try await session.data(for: req) }
+        catch { throw ChaiError.message(SensitiveContentGuard.userMessage(error)) }
         guard let http = response as? HTTPURLResponse else { throw ChaiError.message("無效的網路回應") }
         guard (200..<300).contains(http.statusCode) else { throw Self.apiError(http.statusCode, data: data) }
+        // Inspect decoded JSON, including escaped text, metadata, citations and nested details.
+        let object: Any
+        do { object = try JSONSerialization.jsonObject(with: data) }
+        catch { throw ChaiError.message("API 回應格式無效。") }
+        try SensitiveContentGuard.validateJSON(object, key: key)
         return data
     }
     static func apiError(_ status: Int, data: Data) -> ChaiError {
         let labels = [400:"請求或工具不受支援；請檢查模型與設定",401:"金鑰無效，請重新設定",403:"帳號無權限使用此模型或工具",404:"找不到模型或端點，請切換模型",429:"額度不足或請求過多，請稍後手動重試",500:"服務暫時異常",502:"服務暫時異常",503:"服務忙碌"]
-        let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-        let code = (obj?["error"] as? [String: Any])?["code"] as? String ?? ""
-        return .message("HTTP \(status)：\(labels[status] ?? "API 請求失敗") \(code.prefix(100))")
+        // Never include untrusted error.code/message or any request data.
+        return .message("HTTP \(status)：\(labels[status] ?? "API 請求失敗")")
     }
     func models(key: String) async throws -> [String] {
         let data = try await request("models", key: key)
@@ -57,6 +65,7 @@ struct AIClient {
             let value = try Calculator.evaluate(expression)
             answer.text = "\(expression) = \(value) \(object["unit"] as? String ?? "")\n\(object["steps"] as? String ?? "")\n（結果由本機計算）"
         }
+        try SensitiveContentGuard.validate(value: answer, key: key)
         return answer
     }
     static func jsonObject(_ text: String) -> [String: Any]? {
@@ -64,14 +73,18 @@ struct AIClient {
         return (try? JSONSerialization.jsonObject(with: Data(text[start...end].utf8))) as? [String: Any]
     }
     static func parse(_ data: Data) throws -> Answer {
-        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw ChaiError.message("回應格式無效") }
-        if let status = root["status"] as? String, status != "completed" { throw ChaiError.message("回應未完成（\(status)），請縮短內容後重試。") }
+        let object: Any
+        do { object = try JSONSerialization.jsonObject(with: data) }
+        catch { throw ChaiError.message("回應格式無效") }
+        try SensitiveContentGuard.validateJSON(object)
+        guard let root = object as? [String: Any] else { throw ChaiError.message("回應格式無效") }
+        if let status = root["status"] as? String, status != "completed" { throw ChaiError.message("回應未完成，請縮短內容後重試。") }
         let outputs = root["output"] as? [[String: Any]] ?? []
         var texts: [String] = []; var citations: [Citation] = []; var searched = false
         for output in outputs {
             if output["type"] as? String == "web_search_call", output["status"] as? String == "completed" { searched = true }
             for content in output["content"] as? [[String: Any]] ?? [] {
-                if let refusal = content["refusal"] as? String { throw ChaiError.message("模型拒絕處理：\(refusal)") }
+                if content["refusal"] as? String != nil { throw ChaiError.message("模型拒絕處理這項要求。") }
                 if let text = content["text"] as? String { texts.append(text) }
                 for a in content["annotations"] as? [[String: Any]] ?? [] {
                     if a["type"] as? String == "url_citation", let url = a["url"] as? String,

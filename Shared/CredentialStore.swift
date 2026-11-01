@@ -26,6 +26,24 @@ enum CredentialStore {
         defer { flock(fd, LOCK_UN) }
         return try action(folder.appendingPathComponent("openai.credential"))
     }
+    /// A one-time local security bootstrap on activation, never passed to a View.
+    /// Persist only non-reversible hashes so old/deleted credentials remain blocked.
+    static func prepareGuard() throws {
+        try locked { file in
+            let index = file.deletingLastPathComponent().appendingPathComponent("blocked-fingerprints.json")
+            var values = try FileManager.default.fileExists(atPath: index.path)
+                ? JSONDecoder().decode([SensitiveContentGuard.Fingerprint].self, from: Data(contentsOf: index)) : []
+            if FileManager.default.fileExists(atPath: file.path), let key = String(data: try Data(contentsOf: file), encoding: .utf8), !key.isEmpty {
+                let fingerprint = SensitiveContentGuard.Fingerprint(key: key)
+                if !values.contains(fingerprint) {
+                    values.append(fingerprint)
+                    try JSONEncoder().encode(values).write(to: index, options: [.atomic, .completeFileProtection])
+                    try FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete, .posixPermissions: 0o600], ofItemAtPath: index.path)
+                }
+            }
+            SensitiveContentGuard.remember(values)
+        }
+    }
     /// Check existence only; never load the secret merely to render a screen.
     static func hasKey() throws -> Bool {
         try locked { FileManager.default.fileExists(atPath: $0.path) }
@@ -41,6 +59,7 @@ enum CredentialStore {
     }
     static func save(_ key: String) throws {
         let clean = try APIKeyInput.normalize(key)
+        try prepareGuard()
         try locked { file in
             try Data(clean.utf8).write(to: file, options: [.atomic, .completeFileProtection])
             try FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete, .posixPermissions: 0o600], ofItemAtPath: file.path)
@@ -51,8 +70,10 @@ enum CredentialStore {
                 throw ChaiError.message("金鑰寫入驗證失敗，請重試。")
             }
         }
+        try prepareGuard()
     }
     static func delete() throws {
+        try prepareGuard()
         try locked { file in
             if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }
         }

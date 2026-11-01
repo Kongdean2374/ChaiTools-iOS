@@ -8,21 +8,13 @@ struct KeyboardPanel: View {
         VStack(spacing: 0) {
             toolbar
             Divider().opacity(0.25)
-            ZStack(alignment: .top) {
-                Group {
-                    if let model = bridge.model { KeyboardWorkspace(bridge: bridge, model: model) }
-                    else { home }
-                }.frame(maxWidth: .infinity, maxHeight: .infinity)
-                if let notice = bridge.notice {
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: notice.isError ? "exclamationmark.circle" : "checkmark.circle").foregroundStyle(notice.isError ? .orange : InterfaceTheme.accent)
-                        ScrollView { Text(notice.text).font(.caption).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 80)
-                        Button { bridge.notice = nil } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }.accessibilityLabel("收起提示")
-                    }.padding(.leading, 12).background(InterfaceTheme.secondarySurface, in: RoundedRectangle(cornerRadius: 12)).padding(8)
-                }
-            }.clipped()
+            Group {
+                if bridge.showingInformation { information }
+                else if let model = bridge.model { KeyboardWorkspace(bridge: bridge, model: model) }
+                else { home }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
         }.background(InterfaceTheme.background).foregroundStyle(InterfaceTheme.text).tint(InterfaceTheme.accent)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: bridge.model?.task.tool.id)
+
     }
     private var toolbar: some View {
         HStack(spacing: 4) {
@@ -32,22 +24,44 @@ struct KeyboardPanel: View {
             }
             Text(bridge.model?.task.tool.name ?? (bridge.showingAllTools ? "全部工具" : "ChaiTools")).font(.subheadline.weight(.semibold)).lineLimit(1)
             Spacer(minLength: 2)
-            Button { bridge.explainAvailability() } label: {
+            Button { bridge.showingInformation.toggle() } label: {
                 CTStatusPill(text: bridge.statusLabel).frame(minHeight: 44)
             }.accessibilityLabel("功能狀態：\(bridge.statusLabel)")
             Menu {
-                ForEach(bridge.tools) { tool in Button(tool.name, systemImage: tool.icon) { bridge.select(tool) } }
+                ForEach(bridge.availableTools) { tool in Button(tool.name, systemImage: tool.icon) { bridge.select(tool) } }
                 Divider()
                 Toggle("觸覺回饋", isOn: $bridge.haptics)
                 Button("中文輸入與長文編輯") { bridge.notify("中文請先用原生鍵盤輸入並複製，再切回貼上。完整長文編輯請使用主 App。", error: true) }
             } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }.accessibilityLabel("切換工具與更多操作")
         }.padding(.horizontal, 6).frame(height: 44)
     }
+    private var information: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if let notice = bridge.notice { Text(notice.text).font(.callout) }
+                    LabeledContent("完整取用", value: bridge.fullAccess ? "已允許" : "未允許")
+                    LabeledContent("主 App 群組", value: "請在主 App 設定確認")
+                    LabeledContent("鍵盤群組", value: bridge.sharing ? "可取得" : "缺少共享授權")
+                    LabeledContent("金鑰檔案", value: bridge.sharing ? (bridge.hasKey ? "存在" : "未取得") : "無法查詢")
+                    LabeledContent("模型連線", value: bridge.connectionStatus)
+                    Text("完整取用與 App Group 是不同條件。缺少共享授權時，請用主 App 生成再複製；本機計算仍可用。").foregroundStyle(InterfaceTheme.secondaryText)
+                    Text("中文請先用原生鍵盤輸入，再選取或複製、切回 ChaiTools。系統不會在此面板內再開啟注音鍵盤。").foregroundStyle(InterfaceTheme.secondaryText)
+                }.font(.caption).padding(12)
+            }
+            Button("返回工作") { bridge.showingInformation = false; bridge.notice = nil }.frame(maxWidth: .infinity).buttonStyle(QuietButtonStyle()).padding(6)
+        }
+    }
     private var home: some View {
         VStack(spacing: 6) {
+            if !bridge.canUseAI {
+                Button { bridge.showingInformation = true } label: {
+                    Text("鍵盤 AI 暫不可用 · 點此查看狀態").font(.caption).frame(minHeight: 44)
+                }
+            }
             ScrollView {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: typeSize.isAccessibilitySize ? 2 : 4), spacing: 6) {
-                    ForEach(bridge.showingAllTools ? bridge.tools : Array(bridge.tools.prefix(8))) { tool in
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: typeSize.isAccessibilitySize ? 2 : 3), spacing: 6) {
+                    ForEach(bridge.showingAllTools ? bridge.availableTools : Array(bridge.availableTools.prefix(6))) { tool in
                         Button { bridge.select(tool) } label: {
                             CTToolTile(tool: tool, compact: true)
                         }.buttonStyle(CTPressStyle()).accessibilityLabel(tool.name)
@@ -58,7 +72,7 @@ struct KeyboardPanel: View {
                 Button { bridge.paste("home") } label: {
                     Label(bridge.homeSource.isEmpty ? "貼上文字" : "已備妥 \(bridge.homeSource.count) 字", systemImage: "doc.on.clipboard").frame(maxWidth: .infinity)
                 }.buttonStyle(QuietButtonStyle())
-                if bridge.tools.count > 8 && !bridge.showingAllTools {
+                if bridge.availableTools.count > 6 && !bridge.showingAllTools {
                     Button("全部工具") { bridge.showingAllTools = true }.buttonStyle(QuietButtonStyle())
                 }
             }.padding(.horizontal, 8).padding(.bottom, 6)
@@ -83,7 +97,7 @@ struct KeyboardWorkspace: View {
             Divider().opacity(0.25)
             actions
         }
-        .onChange(of: model.task.revisions.last?.id) { _, _ in bridge.showResult = true }
+        .onChange(of: model.task.revisions.last?.id) { _, _ in bridge.showResult = true; if model.task.tool.id != "calculate" { bridge.connectionStatus = "最近請求成功" } }
         .onChange(of: model.error) { _, text in if !text.isEmpty { bridge.notify(text, error: true) } }
     }
     private var controls: some View {
@@ -99,9 +113,9 @@ struct KeyboardWorkspace: View {
             } else {
                 Menu {
                     Button("貼上追加指令") { bridge.paste("instruction") }
-                    Button("自然語氣") { model.instruction = "自然語氣，保留原意" }
-                    Button("正式語氣") { model.instruction = "正式語氣，保留原意" }
-                    Button("精簡輸出") { model.instruction = "精簡輸出，保留重點" }
+                    Button("自然語氣") { _ = model.setInstruction("自然語氣，保留原意") }
+                    Button("正式語氣") { _ = model.setInstruction("正式語氣，保留原意") }
+                    Button("精簡輸出") { _ = model.setInstruction("精簡輸出，保留重點") }
                 } label: { Label("要求", systemImage: "slider.horizontal.3").font(.caption).frame(minHeight: 44) }
             }
         }.padding(.horizontal, 10).disabled(model.busy)
@@ -143,10 +157,10 @@ struct KeyboardWorkspace: View {
             Text("本機算式鍵位 · % 表示 ÷100").font(.caption2)
             ForEach([Array("789+()"), Array("456-%."), Array("123*/0")], id: \.self) { row in
                 HStack(spacing: 4) { ForEach(row, id: \.self) { c in
-                    Button(String(c)) { model.task.source.append(c); bridge.snapshot = nil }.frame(maxWidth: .infinity).buttonStyle(QuietButtonStyle())
+                    Button(String(c)) { _ = model.setSource(model.task.source + String(c)); bridge.snapshot = nil }.frame(maxWidth: .infinity).buttonStyle(QuietButtonStyle())
                 } }
             }
-            Button("刪除一字") { if !model.task.source.isEmpty { model.task.source.removeLast(); bridge.snapshot = nil } }.buttonStyle(QuietButtonStyle())
+            Button("刪除一字") { if !model.task.source.isEmpty { _ = model.setSource(String(model.task.source.dropLast())); bridge.snapshot = nil } }.buttonStyle(QuietButtonStyle())
         }
     }
     private var result: some View {
@@ -160,7 +174,7 @@ struct KeyboardWorkspace: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) { ForEach(["更自然", "更精簡", "更正式", "口語化", "保留原意"], id: \.self) { chip in
-                    Button(chip) { model.instruction = chip; bridge.run(revision: true) }.buttonStyle(QuietButtonStyle())
+                    Button(chip) { _ = model.setInstruction(chip); bridge.run(revision: true) }.buttonStyle(QuietButtonStyle())
                 } }
             }.disabled(model.busy)
             HStack {
@@ -179,11 +193,15 @@ struct KeyboardWorkspace: View {
     }
     private var actions: some View {
         HStack(spacing: 4) {
-            Button { if model.busy { model.cancel() } else { bridge.run() } } label: {
-                HStack(spacing: 4) { if model.busy { ProgressView().tint(.white) }; Text(model.busy ? "取消" : model.task.tool.actionTitle) }.frame(maxWidth: .infinity)
-            }.buttonStyle(QuietButtonStyle(prominent: true))
-            Button("複製") { bridge.copy() }.frame(maxWidth: .infinity).buttonStyle(QuietButtonStyle()).disabled(model.result.isEmpty)
-            Button("插入游標") { bridge.insert(replace: false) }.frame(maxWidth: .infinity).buttonStyle(QuietButtonStyle()).disabled(model.result.isEmpty)
+            if model.busy || !bridge.showResult || model.result.isEmpty {
+                Button { if model.busy { model.cancel() } else { bridge.run() } } label: {
+                    HStack(spacing: 4) { if model.busy { ProgressView().tint(.white) }; Text(model.busy ? "取消" : model.task.tool.actionTitle) }.frame(maxWidth: .infinity)
+                }.buttonStyle(QuietButtonStyle(prominent: true))
+                Button("貼上") { bridge.paste("source") }.buttonStyle(QuietButtonStyle()).disabled(model.busy)
+            } else {
+                Button("複製") { bridge.copy() }.frame(maxWidth: .infinity).buttonStyle(QuietButtonStyle())
+                Button("插入游標") { bridge.insert(replace: false) }.frame(maxWidth: .infinity).buttonStyle(QuietButtonStyle(prominent: true))
+            }
             Menu {
                 Button("取代選取內容") { bridge.insert(replace: true) }.disabled(bridge.snapshot == nil || model.result.isEmpty)
                 Button("貼上追加指令") { bridge.paste("instruction") }

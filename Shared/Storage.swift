@@ -26,12 +26,24 @@ final class SharedStore {
         defer { flock(fd, LOCK_UN) }
         return try operation()
     }
-    private func read<T: Decodable>(_ name: String, default value: T) throws -> T {
+    private func read<T: Codable>(_ name: String, default value: T) throws -> T {
         let url = directory.appendingPathComponent(name)
         guard FileManager.default.fileExists(atPath: url.path) else { return value }
-        return try JSONDecoder().decode(T.self, from: Data(contentsOf: url))
+        let data = try Data(contentsOf: url)
+        do {
+            try SensitiveContentGuard.validate(String(decoding: data, as: UTF8.self))
+            let object = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+            try SensitiveContentGuard.validateJSON(object)
+        }
+        catch {
+            // Purge a contaminated legacy file before any state is restored. Do not quarantine secrets.
+            try FileManager.default.removeItem(at: url)
+            throw ChaiError.message("已移除無法安全載入的舊資料（格式無效或含敏感憑證），請重新建立內容。")
+        }
+        return try JSONDecoder().decode(T.self, from: data)
     }
     private func write<T: Encodable>(_ value: T, name: String) throws {
+        try SensitiveContentGuard.validate(value: value)
         let data = try JSONEncoder().encode(value)
         let url = directory.appendingPathComponent(name)
         try data.write(to: url, options: .atomic)
@@ -58,6 +70,7 @@ final class SharedStore {
         }
     }
     func save(_ task: WorkTask) throws {
+        try SensitiveContentGuard.validate(value: task)
         try locked {
             let p = try read("preferences-v1.json", default: Preferences())
             guard p.history else { return }
@@ -68,6 +81,7 @@ final class SharedStore {
     }
     func delete(_ id: UUID? = nil) throws {
         try locked {
+            if id == nil { try write([WorkTask](), name: "history-v1.json"); return }
             var all = try read("history-v1.json", default: [WorkTask]())
             if let id { all.removeAll { $0.id == id } } else { all.removeAll() }
             try write(all, name: "history-v1.json")

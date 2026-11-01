@@ -32,6 +32,7 @@ final class KeyboardViewController: UIInputViewController {
         super.viewWillAppear(animated)
         bridge.needsGlobe = needsInputModeSwitchKey
         bridge.refresh()
+        if let previous = lastDocument, previous != textDocumentProxy.documentIdentifier { bridge.resetContext() }
         lastDocument = textDocumentProxy.documentIdentifier
     }
     override func viewDidLayoutSubviews() {
@@ -47,7 +48,7 @@ final class KeyboardViewController: UIInputViewController {
     }
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
-        if lastDocument != textDocumentProxy.documentIdentifier { bridge.model?.cancel(); bridge.snapshot = nil }
+        if lastDocument != textDocumentProxy.documentIdentifier { bridge.resetContext() }
         lastDocument = textDocumentProxy.documentIdentifier
     }
     override func viewWillDisappear(_ animated: Bool) {

@@ -1,194 +1,227 @@
 import SwiftUI
 import UIKit
 
+/// A single conversation surface, also used when reopening saved work.
 struct ToolWorkspace: View {
     @StateObject private var model: WorkspaceModel
     @State private var preferences = Preferences()
     @State private var options = EditorOptions()
+    @State private var composer = ""
     @State private var showOptions = false
+    @State private var showTools = false
+    @State private var editing = false
+    @State private var editedText = ""
+    @State private var share: SharedText?
+    @State private var pendingTool: Tool?
     @State private var clearConfirmation = false
+    @State private var showFeedback = false
     @State private var from = "m"
     @State private var to = "cm"
-    @State private var showFeedback = false
-    init(tool: Tool, task: WorkTask? = nil) {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    init(tool: Tool = Tool.defaults[2], task: WorkTask? = nil) {
         _model = StateObject(wrappedValue: WorkspaceModel(tool: tool, task: task))
     }
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    Label(model.task.tool.subtitle, systemImage: model.task.tool.icon).font(.subheadline).foregroundStyle(InterfaceTheme.secondaryText)
-                    Spacer()
-                }
-                if !model.error.isEmpty {
-                    SurfaceCard {
-                        NoticeCard(notice: OperationNotice(title: "未能完成操作", message: model.error, kind: .failure))
-                        Button("收起提示") { model.error = "" }.buttonStyle(QuietButtonStyle())
+        ScrollViewReader { reader in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    if model.task.source.isEmpty && model.task.revisions.isEmpty { welcome }
+                    if !model.task.source.isEmpty { userMessage(model.task.source, label: model.task.tool.id == "generate" ? "你的主題" : "你的原文") }
+                    ForEach(Array(model.task.revisions.enumerated()), id: \.element.id) { index, revision in
+                        if !revision.instruction.isEmpty { userMessage(revision.instruction, label: "追加要求") }
+                        answerMessage(revision, index: index)
                     }
-                } else if showFeedback && !model.status.isEmpty {
-                    NoticeCard(notice: OperationNotice(title: "操作完成", message: model.status, kind: .success))
+                    if model.busy {
+                        HStack(spacing: 12) { ProgressView(); Text("正在\(model.task.tool.actionTitle)…可隨時取消").font(.subheadline).foregroundStyle(InterfaceTheme.secondaryText) }
+                    }
+                    Color.clear.frame(height: 1).id("conversation-end")
+                }.padding(InterfaceTheme.spacing)
+            }.scrollDismissesKeyboard(.interactively)
+                .onChange(of: model.task.revisions.last?.id) { _, _ in
+                    if reduceMotion { reader.scrollTo("conversation-end", anchor: .bottom) }
+                    else { withAnimation(.easeOut(duration: 0.18)) { reader.scrollTo("conversation-end", anchor: .bottom) } }
+                    if model.error.isEmpty { composer = "" }
                 }
-                sourceCard
-                contextCard
-                if model.task.tool.id == "calculate" { calculationCard }
-                if model.task.tool.id == "search" { Text("使用即時搜尋可能產生額外工具費用。來源只取自 API，查詢失敗不會用舊知識冒充結果。").font(.caption).foregroundStyle(InterfaceTheme.secondaryText) }
-                if !model.task.revisions.isEmpty { resultCard; revisionCard }
-                HStack {
-                    Button("儲存草稿") { model.persist(manual: true) }.buttonStyle(QuietButtonStyle())
-                    Spacer()
-                    Button("清空工作", role: .destructive) { clearConfirmation = true }.frame(minHeight: 44)
-                }.disabled(model.busy)
-            }.padding(16)
-        }.appSurface().navigationTitle(model.task.tool.name).navigationBarTitleDisplayMode(.inline)
-            .scrollDismissesKeyboard(.interactively)
-            .safeAreaInset(edge: .bottom, spacing: 0) { executionBar }
-            .sheet(isPresented: $showOptions) { EditorOptionsView(tool: model.task.tool, preferences: $preferences, options: $options) }
-            .confirmationDialog("清空目前原文與未儲存版本？", isPresented: $clearConfirmation, titleVisibility: .visible) {
-                Button("清空工作區", role: .destructive) { model.clear() }
+        }.appSurface().navigationTitle("ChaiTools").navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge: .bottom, spacing: 0) { inputDock }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        ForEach(preferences.tools.filter(\.enabled)) { tool in Button(tool.name, systemImage: tool.icon) { choose(tool) } }
+                        Button("所有工具與收藏") { showTools = true }
+                    } label: { Label(model.task.tool.name, systemImage: model.task.tool.icon).font(.caption) }.disabled(model.busy)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Text("模型：\(preferences.model)")
+                        Button("情境設定", systemImage: "slider.horizontal.3") { showOptions = true }
+                        Button("儲存草稿") { if model.task.revisions.isEmpty { _ = model.setSource(composer) }; model.persist(manual: true) }
+                        Button("開新對話", systemImage: "plus.bubble") { clearConfirmation = true }
+                    } label: { Image(systemName: "ellipsis.circle").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("模型與對話選項")
+                }
+            }
+            .sheet(isPresented: $showOptions) {
+                EditorOptionsView(tool: model.task.tool, preferences: $preferences, options: $options)
+                    .presentationDetents([.medium, .large])
+            }
+            .sheet(isPresented: $showTools) { ToolListView() }
+            .sheet(isPresented: $editing) { editSheet }
+            .sheet(item: $share) { ShareSheet(text: $0.text) }
+            .confirmationDialog("開新對話？目前內容可先儲存至工作紀錄。", isPresented: $clearConfirmation, titleVisibility: .visible) {
+                Button("開新對話", role: .destructive) { reset(tool: model.task.tool) }
+            }
+            .confirmationDialog("切換工具會開啟新對話，避免混用上一個結果。", isPresented: Binding(get: { pendingTool != nil }, set: { if !$0 { pendingTool = nil } }), titleVisibility: .visible) {
+                Button("切換並開新對話") { if let tool = pendingTool { reset(tool: tool) }; pendingTool = nil }
             }
             .task {
-                let result = await Task.detached(priority: .utility) { () -> Result<Preferences, Error> in Result { try SharedStore.live().preferences() } }.value
-                guard !Task.isCancelled else { return }
-                switch result { case .success(let p): preferences = p; case .failure(let e): model.error = e.localizedDescription }
+                do { preferences = try await Task.detached(priority: .utility) { try SharedStore.live().preferences() }.value }
+                catch { model.error = SensitiveContentGuard.userMessage(error) }
+                if model.task.revisions.isEmpty { composer = model.task.source }
             }
             .task(id: model.status) {
-                guard !model.status.isEmpty else { return }
-                showFeedback = true
+                showFeedback = !model.status.isEmpty
                 try? await Task.sleep(for: .seconds(3))
                 if !Task.isCancelled { showFeedback = false }
             }
             .onDisappear { model.cancel() }
     }
-    private var sourceCard: some View {
-        SurfaceCard {
-            HStack {
-                Text(model.task.tool.id == "generate" ? "01 · 主題與素材" : "01 · 原文").font(.headline)
-                Spacer(); Button("清空") { model.task.source = "" }.font(.caption).frame(minHeight: 44); Text("\(model.task.source.count) 字").font(.caption).foregroundStyle(InterfaceTheme.secondaryText)
-            }
-            ZStack(alignment: .topLeading) {
-                if model.task.source.isEmpty { Text(model.task.tool.id == "generate" ? "寫下主題，或在下方描述你想產生的內容。" : "輸入或貼上要處理的文字。局部改寫可只放入選定段落。").font(.body).foregroundStyle(InterfaceTheme.secondaryText).padding(.top, 8).padding(.leading, 5).allowsHitTesting(false) }
-                TextEditor(text: $model.task.source).frame(minHeight: 140).scrollContentBackground(.hidden).accessibilityLabel("原文或主題")
-            }
-            HStack {
-                PasteButton(payloadType: String.self) { model.task.source = $0.joined(separator: "\n"); AppHaptics.tap() }
-                Spacer()
-                Text("只在執行時傳送").font(.caption).foregroundStyle(InterfaceTheme.secondaryText)
-            }
-        }.disabled(model.busy)
-    }
-    private var contextCard: some View {
-        SurfaceCard {
-            Button { showOptions = true } label: {
-                HStack {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("02 · 情境設定").font(.headline).foregroundStyle(InterfaceTheme.text)
-                        Text("\(preferences.language) · \(options.tone) · \(options.detailed ? "詳細" : "精簡")").font(.caption).foregroundStyle(InterfaceTheme.secondaryText)
-                    }
-                    Spacer(); Image(systemName: "slider.horizontal.3").frame(width: 44, height: 44)
-                }
-            }.buttonStyle(.plain)
-            Divider().opacity(0.3)
+    private var welcome: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Image(systemName: model.task.tool.icon).font(.system(size: 28, weight: .medium)).foregroundStyle(InterfaceTheme.accent)
+            Text("今天想完成什麼？").font(.title2.weight(.semibold))
+            Text(model.task.tool.id == "generate" ? "寫下想法，我們一起把它寫好。" : model.task.tool.subtitle).foregroundStyle(InterfaceTheme.secondaryText)
+            Text("在下方輸入或貼上，結果會留在這段對話中。").font(.subheadline).foregroundStyle(InterfaceTheme.secondaryText)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    Menu(preferences.language) {
-                        ForEach(["繁體中文（臺灣）", "English", "日本語"], id: \.self) { language in Button(language) { preferences.language = language } }
-                    }.buttonStyle(QuietButtonStyle())
-                    if ["translate", "language"].contains(model.task.tool.id) {
-                        Button(options.detailed ? "詳細解析" : "快速模式") { options.detailed.toggle() }.buttonStyle(QuietButtonStyle())
-                    }
-                    if ["rewrite", "generate", "custom"].contains(model.task.tool.id) {
-                        Menu(options.tone) { ForEach(["自然", "正式", "禮貌", "社群風格"], id: \.self) { tone in Button(tone) { options.tone = tone } } }.buttonStyle(QuietButtonStyle())
-                        Menu(options.length) { ForEach(["精簡", "適中", "詳細"], id: \.self) { length in Button(length) { options.length = length } } }.buttonStyle(QuietButtonStyle())
+                    ForEach(preferences.tools.filter { ["generate", "translate", "rewrite", "search", "calculate"].contains($0.id) && $0.enabled }) { tool in
+                        Button(tool.name) { choose(tool) }.buttonStyle(QuietButtonStyle())
                     }
                 }
             }
-            if model.task.revisions.isEmpty {
-                TextField("額外要求", text: $model.instruction, axis: .vertical).lineLimit(2...5).frame(minHeight: 44)
-            }
-        }.disabled(model.busy)
+            Text("\(preferences.model) · 金鑰與連線狀態請見設定").font(.caption).foregroundStyle(InterfaceTheme.secondaryText)
+            if model.task.tool.id == "calculate" { calculationTools }
+        }.padding(.vertical, 24)
     }
-    private var calculationCard: some View {
-        SurfaceCard {
-            Text("本機計算").font(.headline)
-            Text("四則運算、括號、百分比（÷100）。例如 200*(1+10%)。自然語言題才會使用 AI；不提供即時匯率。").font(.caption).foregroundStyle(InterfaceTheme.secondaryText)
+    private func userMessage(_ text: String, label: String) -> some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            Text(label).font(.caption).foregroundStyle(InterfaceTheme.secondaryText)
+            Text(text).textSelection(.enabled).padding(16)
+                .background(InterfaceTheme.secondarySurface, in: RoundedRectangle(cornerRadius: InterfaceTheme.radius))
+        }.frame(maxWidth: .infinity, alignment: .trailing).padding(.leading, 24)
+    }
+    private func answerMessage(_ revision: Revision, index: Int) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Picker("從", selection: $from) { ForEach(["m", "cm", "km", "in", "ft", "kg", "g", "lb", "°C", "°F"], id: \.self) { Text($0) } }
-                Image(systemName: "arrow.right")
-                Picker("至", selection: $to) { ForEach(["m", "cm", "km", "in", "ft", "kg", "g", "lb", "°C", "°F"], id: \.self) { Text($0) } }
+                Label(model.task.tool.id == "translate" ? "自然譯文" : "ChaiTools", systemImage: "sparkle").font(.caption.weight(.semibold)).foregroundStyle(InterfaceTheme.accent)
                 Spacer()
-            }.pickerStyle(.menu)
-            ViewThatFits(in: .horizontal) {
-                HStack { calculationButtons }
-                VStack(alignment: .leading) { calculationButtons }
+                Button("第 \(index + 1) 版\(model.task.selected == index ? " · 目前" : "")") { model.select(index) }.font(.caption).frame(minHeight: 44).disabled(model.busy)
             }
-        }.disabled(model.busy)
+            Text(revision.answer.text).font(.body).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+            if !revision.answer.details.isEmpty || !revision.answer.citations.isEmpty {
+                DisclosureGroup(revision.answer.searched ? "網路來源（\(revision.answer.citations.count)）" : "翻譯與語境解析") { ResultDetails(answer: revision.answer) }
+            }
+            if model.task.selected == index {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        Button("複製", systemImage: "doc.on.doc") { export(shareSheet: false) }.buttonStyle(QuietButtonStyle())
+                        Button("分享", systemImage: "square.and.arrow.up") { export(shareSheet: true) }.buttonStyle(QuietButtonStyle())
+                        Button("編輯") { do { editedText = try model.output(); editing = true } catch { model.error = SensitiveContentGuard.userMessage(error) } }.buttonStyle(QuietButtonStyle()).disabled(model.busy)
+                        Button("重試") { model.run(preferences: preferences, configuration: options.prompt) }.buttonStyle(QuietButtonStyle()).disabled(model.busy)
+                    }
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(["更自然", "再短一些", "更正式"], id: \.self) { chip in
+                            Button(chip) { composer = chip; submit() }.buttonStyle(QuietButtonStyle())
+                        }
+                    }
+                }.disabled(model.busy)
+            }
+        }.padding(.vertical, 4)
     }
-    @ViewBuilder private var calculationButtons: some View {
-        Button("單位換算") {
-            do {
-                let v = try Calculator.evaluate(model.task.source)
-                let value = try Calculator.convert(v, from: from, to: to)
-                model.accept(Answer(text: "\(v) \(from) = \(value) \(to)"))
-            } catch { model.error = error.localizedDescription }
-        }.buttonStyle(QuietButtonStyle())
-        Button("帶入圓面積公式") { model.task.source = "3.141592653589793 * (1 * 1)" }.buttonStyle(QuietButtonStyle())
-    }
-    private var resultCard: some View {
-        SurfaceCard {
+    private var inputDock: some View {
+        VStack(spacing: 8) {
+            if !model.error.isEmpty {
+                HStack(alignment: .top) {
+                    Text(model.error).font(.caption).foregroundStyle(.red)
+                    Spacer(); Button("收起") { model.error = "" }.frame(minHeight: 44)
+                }
+            } else if showFeedback { Text(model.status).font(.caption).foregroundStyle(InterfaceTheme.secondaryText) }
             HStack {
-                Text(model.task.tool.id == "translate" ? "03 · 自然譯文" : "03 · 結果").font(.headline)
-                Spacer(); Text("可直接編輯").font(.caption).foregroundStyle(InterfaceTheme.secondaryText)
+                Text(model.task.revisions.isEmpty ? (model.task.tool.id == "generate" ? "描述你想寫的內容" : "輸入原文或問題") : "繼續修改第 \(model.task.selected + 1) 版…").font(.caption).foregroundStyle(InterfaceTheme.secondaryText)
+                Spacer()
+                if model.task.tool.id == "calculate" { Text("算式離線 · 文字題用 AI").font(.caption2).foregroundStyle(InterfaceTheme.secondaryText) }
             }
-            TextEditor(text: $model.result).frame(minHeight: 180).scrollContentBackground(.hidden)
-                .font(model.task.tool.id == "calculate" ? .system(.body, design: .monospaced) : .body)
-                .accessibilityLabel("結果，可編輯").disabled(model.busy)
-            ViewThatFits(in: .horizontal) {
-                HStack { resultButtons }
-                VStack(alignment: .leading) { resultButtons }
+            SafeTextInput(text: $composer, label: "對話輸入", onBlocked: blocked).frame(height: 76).disabled(model.busy)
+            HStack(spacing: 8) {
+                PasteButton(payloadType: String.self) { values in
+                    do { composer = try SensitiveContentGuard.checked(values.joined(separator: "\n")) }
+                    catch { blocked() }
+                }.disabled(model.busy)
+                Button { showOptions = true } label: { Image(systemName: "slider.horizontal.3").frame(width: 44, height: 44) }.accessibilityLabel("情境設定").disabled(model.busy)
+                Spacer()
+                Button { if model.busy { model.cancel() } else { submit() } } label: {
+                    Label(model.busy ? "取消" : "送出", systemImage: model.busy ? "stop.fill" : "arrow.up")
+                }.buttonStyle(QuietButtonStyle(prominent: true)).disabled(!model.busy && composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            ResultDetails(answer: model.task.answer)
-            Text("本次使用量：輸入 \(model.task.answer?.inputTokens ?? 0)／輸出 \(model.task.answer?.outputTokens ?? 0) tokens；非帳務餘額。").font(.caption2).foregroundStyle(InterfaceTheme.secondaryText)
+        }.padding(12).background(CTBarSurface())
+    }
+    private var editSheet: some View {
+        NavigationStack {
+            SafeTextInput(text: $editedText, label: "編輯結果", onBlocked: blocked).padding().appSurface().navigationTitle("編輯結果")
+                .safeAreaInset(edge: .bottom) { if !model.error.isEmpty { Text(model.error).font(.caption).padding() } }
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("取消") { editing = false } }
+                    ToolbarItem(placement: .confirmationAction) { Button("儲存新版本") { model.saveEdit(editedText); if model.error.isEmpty { editing = false } } }
+                }
         }
     }
-    @ViewBuilder private var resultButtons: some View {
-        Button { UIPasteboard.general.string = model.result; model.status = "已複製結果"; AppHaptics.result(success: true) } label: { Label("複製", systemImage: "doc.on.doc") }.buttonStyle(QuietButtonStyle())
-        ShareLink(item: model.result) { Label("分享", systemImage: "square.and.arrow.up") }.buttonStyle(QuietButtonStyle())
-        Button("儲存編輯版本") { model.saveEdit(model.result) }.buttonStyle(QuietButtonStyle()).disabled(model.busy)
-    }
-    private var revisionCard: some View {
-        SurfaceCard {
-            Text("繼續修訂").font(.headline)
-            TextField("輸入追加指令", text: $model.instruction, axis: .vertical).lineLimit(2...5).frame(minHeight: 44)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) { ForEach(["更自然", "更精簡", "更正式", "口語化", "補充細節", "保留原意"], id: \.self) { chip in
-                    Button(chip) { model.instruction = chip; model.run(preferences: preferences, revision: true, configuration: options.prompt); AppHaptics.tap() }.buttonStyle(QuietButtonStyle())
-                } }
+    private var calculationTools: some View {
+        VStack(alignment: .leading) {
+            HStack {
+                Picker("從", selection: $from) { ForEach(["m", "cm", "km", "in", "ft", "kg", "g", "lb", "°C", "°F"], id: \.self) { Text($0) } }
+                Picker("至", selection: $to) { ForEach(["m", "cm", "km", "in", "ft", "kg", "g", "lb", "°C", "°F"], id: \.self) { Text($0) } }
+                Button("換算") {
+                    do {
+                        let input = try SensitiveContentGuard.checked(composer)
+                        let value = try Calculator.evaluate(input)
+                        let converted = try Calculator.convert(value, from: from, to: to)
+                        _ = model.setSource(input); model.accept(Answer(text: "\(value) \(from) = \(converted) \(to)（本機換算）"))
+                    } catch { model.error = SensitiveContentGuard.userMessage(error) }
+                }.buttonStyle(QuietButtonStyle())
             }
-            Button("依上方追加指令修訂") { model.run(preferences: preferences, revision: true, configuration: options.prompt) }.buttonStyle(QuietButtonStyle())
-            Picker("版本", selection: Binding(get: { model.task.selected }, set: { model.select($0); AppHaptics.tap() })) {
-                ForEach(Array(model.task.revisions.enumerated()), id: \.element.id) { i, revision in Text("第 \(i + 1) 版 · \(revision.date.formatted(date: .omitted, time: .shortened))").tag(i) }
-            }.pickerStyle(.menu)
-            if model.task.selected > 0 { DisclosureGroup("與上一版對照") { Text(model.task.revisions[model.task.selected - 1].answer.text).textSelection(.enabled) } }
-        }.disabled(model.busy)
+            Button("帶入圓面積算式") { composer = "3.141592653589793*(1*1)" }.buttonStyle(QuietButtonStyle())
+        }
     }
-    private var executionBar: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(model.busy ? "正在處理⋯" : "\(model.task.source.count + model.instruction.count) 字待處理").font(.subheadline.weight(.medium))
-                Text(model.busy ? "取消會保留上一版" : model.task.tool.id == "search" ? "網路搜尋含工具費用" : "先預覽，再複製使用").font(.caption).foregroundStyle(InterfaceTheme.secondaryText)
-            }
-            Spacer(minLength: 0)
-            Button {
-                if model.busy { model.cancel() }
-                else {
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                    model.run(preferences: preferences, configuration: options.prompt); AppHaptics.tap()
-                }
-            } label: {
-                HStack { if model.busy { ProgressView().tint(.white) }; Text(model.busy ? "取消" : !model.error.isEmpty ? "重試" : model.task.tool.actionTitle) }
-            }.buttonStyle(QuietButtonStyle(prominent: true))
-        }.padding(.horizontal, 16).padding(.vertical, 10).background(CTBarSurface())
+    private func blocked() { model.error = SensitiveContentGuard.message }
+    private func choose(_ tool: Tool) {
+        guard tool.id != model.task.tool.id else { return }
+        if !model.task.source.isEmpty || !model.task.revisions.isEmpty { pendingTool = tool }
+        else { model.updateTool(tool); options = EditorOptions() }
     }
+    private func reset(tool: Tool) { model.clear(); model.updateTool(tool); composer = ""; options = EditorOptions() }
+    private func submit() {
+        guard (try? SensitiveContentGuard.validate(composer)) != nil else { blocked(); return }
+        if model.task.revisions.isEmpty { guard model.setSource(composer), model.setInstruction("") else { return } }
+        else { guard model.setInstruction(composer) else { return } }
+        model.run(preferences: preferences, revision: !model.task.revisions.isEmpty, configuration: options.prompt)
+        AppHaptics.tap()
+    }
+    private func export(shareSheet: Bool) {
+        do {
+            let text = try model.output()
+            if shareSheet { share = SharedText(text: text) }
+            else { UIPasteboard.general.string = text; model.status = "已複製生成內容" }
+        } catch { model.error = SensitiveContentGuard.userMessage(error) }
+    }
+}
+private struct SharedText: Identifiable { let id = UUID(); let text: String }
+private struct ShareSheet: UIViewControllerRepresentable {
+    let text: String
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [(try? SensitiveContentGuard.checked(text)) ?? SensitiveContentGuard.message], applicationActivities: nil)
+    }
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 struct ResultDetails: View {
     let answer: Answer?

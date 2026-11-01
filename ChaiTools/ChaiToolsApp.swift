@@ -6,9 +6,43 @@ import SwiftUI
 struct RootView: View {
     @AppStorage("welcomed") private var welcomed = false
     @AppStorage("appearance") private var appearance = "system"
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var securityReady = false
+    @State private var securityError = ""
+    @State private var securityNotice = ""
+    @State private var securityEpoch = UUID()
     var body: some View {
+        Group {
+            if securityReady { tabs.id(securityEpoch) }
+            else {
+                VStack(spacing: 16) {
+                    if securityError.isEmpty { ProgressView("正在準備安全工作區") }
+                    else { Text(securityError); Button("重試") { prepareSecurity() } }
+                }.padding().appSurface()
+            }
+        }.safeAreaInset(edge: .top) {
+            if !securityNotice.isEmpty {
+                HStack { Text(securityNotice).font(.caption); Spacer(); Button("收起") { securityNotice = "" }.frame(minHeight: 44) }.padding(.horizontal).background(CTBarSurface())
+            }
+        }.task { prepareSecurity() }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { prepareSecurity() } }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ChaiToolsCredentialsChanged"))) { _ in
+                securityEpoch = UUID(); securityNotice = "金鑰已更新，工作區已重新整理。"; prepareSecurity()
+            }
+    }
+    private func prepareSecurity() {
+        do {
+            try CredentialStore.prepareGuard()
+            // Accessing these boundaries purges contaminated legacy files before restoring any View.
+            let store = try SharedStore.live()
+            do { _ = try store.preferences() } catch { securityNotice = SensitiveContentGuard.userMessage(error) }
+            do { _ = try store.history() } catch { securityNotice = SensitiveContentGuard.userMessage(error) }
+            securityReady = true; securityError = ""
+        } catch { securityReady = false; securityError = SensitiveContentGuard.userMessage(error) }
+    }
+    private var tabs: some View {
         TabView {
-            ToolListView().tabItem { Label("工具", systemImage: "square.grid.2x2") }
+            NavigationStack { ToolWorkspace() }.tabItem { Label("對話", systemImage: "bubble.left.and.bubble.right") }
             HistoryView().tabItem { Label("工作紀錄", systemImage: "clock") }
             ManageToolsView().tabItem { Label("我的工具", systemImage: "slider.horizontal.3") }
             SettingsView().tabItem { Label("設定", systemImage: "gearshape") }

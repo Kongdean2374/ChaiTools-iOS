@@ -24,6 +24,10 @@ struct SettingsView: View {
                 }
                 Section("鍵盤／使用") {
                     NavigationLink { KeyboardGuideView() } label: { Label("啟用與使用 AI 鍵盤", systemImage: "keyboard") }
+                    LabeledContent("主 App 群組容器", value: model.sharingAvailable ? "可取得" : "無共享授權")
+                    LabeledContent("鍵盤完整取用／群組", value: "請在鍵盤狀態頁確認")
+                    LabeledContent("金鑰檔案", value: model.hasKey ? "存在" : "尚未設定")
+                    LabeledContent("目前模型", value: model.connectionStatus)
                     DisclosureGroup(model.sharingAvailable ? "可與鍵盤共用" : "主 App 獨立儲存") {
                         Text(model.sharingAvailable ? "金鑰、偏好與紀錄可供鍵盤使用；鍵盤仍需完整取用權限。" : "目前沒有鍵盤共享權限，主 App 仍可儲存金鑰與紀錄、測試 API 及使用所有工具。鍵盤 AI 暫不可用，可在主 App 生成後複製。").font(.caption).foregroundStyle(InterfaceTheme.secondaryText)
                     }
@@ -89,6 +93,10 @@ struct SettingsView: View {
             }
             Text(model.key.isEmpty ? "可長按輸入框貼上，或點『貼上金鑰』。" : "輸入欄已有 \(model.key.count) 個字元，尚未儲存。")
                 .font(.caption).foregroundStyle(.secondary)
+            if model.clipboardMayContainKey {
+                Text("剪貼簿可能仍保留金鑰；請勿貼到普通文字區。").font(.caption)
+                Button("清除目前剪貼簿") { model.clearClipboard() }.disabled(model.busy)
+            }
             if let pasteNotice = model.pasteNotice { NoticeCard(notice: pasteNotice) }
             Button { dismissKeyKeyboard(); model.saveKey() } label: {
                 Label("儲存金鑰", systemImage: "lock.shield").frame(maxWidth: .infinity, minHeight: 44)
@@ -106,10 +114,10 @@ struct SettingsView: View {
     private var preferences: some View {
         Section {
             LabeledContent("模型") {
-                TextField("模型 ID", text: $model.preferences.model).multilineTextAlignment(.trailing).textInputAutocapitalization(.never).autocorrectionDisabled()
+                SafeLabeledInput("模型 ID", text: $model.preferences.model, onBlocked: model.blocked).multilineTextAlignment(.trailing).textInputAutocapitalization(.never).autocorrectionDisabled()
             }
-            LabeledContent("語言") { TextField("預設語言", text: $model.preferences.language).multilineTextAlignment(.trailing) }
-            LabeledContent("語境") { TextField("例如：臺灣日常", text: $model.preferences.context).multilineTextAlignment(.trailing) }
+            LabeledContent("語言") { SafeLabeledInput("預設語言", text: $model.preferences.language, onBlocked: model.blocked).multilineTextAlignment(.trailing) }
+            LabeledContent("語境") { SafeLabeledInput("例如：臺灣日常", text: $model.preferences.context, onBlocked: model.blocked).multilineTextAlignment(.trailing) }
             Button { dismissKeyKeyboard(); model.savePreferences() } label: { Label("儲存偏好", systemImage: "checkmark.circle") }
             Button { dismissKeyKeyboard(); model.scanModels() } label: { Label("掃描可用模型", systemImage: "arrow.clockwise") }
             if !model.models.isEmpty {
@@ -123,7 +131,7 @@ struct SettingsView: View {
                                 HStack { Text(id); Spacer(); if model.preferences.model == id { Image(systemName: "checkmark.circle.fill").foregroundStyle(InterfaceTheme.accent) } }
                             }.buttonStyle(.plain)
                         }
-                    }.appSurface().searchable(text: $filter, prompt: "搜尋模型 ID").navigationTitle("選擇模型")
+                    }.appSurface().searchable(text: $filter.guarded(onBlocked: model.blocked), prompt: "搜尋模型 ID").navigationTitle("選擇模型")
                         .alert(item: $model.alert) { notice in Alert(title: Text(notice.title), message: Text(notice.message), dismissButton: .default(Text("知道了"))) }
                 } label: { Label("選擇模型（\(model.models.count)）", systemImage: "list.bullet") }
             }
@@ -210,13 +218,13 @@ struct HistoryView: View {
                 }
                 if tasks.count > limit { Button("載入更多") { limit += 20 } }
                 if tasks.isEmpty { ContentUnavailableView("沒有工作紀錄", systemImage: "clock", description: Text("可在設定開啟；隱私模式不永久保存。")) }
-            }.appSurface().searchable(text: $search, prompt: "搜尋原文或結果").navigationTitle("工作紀錄").navigationBarTitleDisplayMode(.inline)
+            }.appSurface().searchable(text: $search.guarded(onBlocked: { error = SensitiveContentGuard.message }), prompt: "搜尋原文或結果").navigationTitle("工作紀錄").navigationBarTitleDisplayMode(.inline)
                 .toolbar { Button("清空", role: .destructive) { confirm = true } }
                 .confirmationDialog("清除所有工作紀錄？", isPresented: $confirm) { Button("清除", role: .destructive) { perform { try SharedStore.live().delete() } } }
                 .onAppear { perform {} }
         }
     }
-    private func perform(_ action: () throws -> Void) { do { try action(); tasks = try SharedStore.live().history() } catch { self.error = error.localizedDescription } }
+    private func perform(_ action: () throws -> Void) { do { try action(); tasks = try SharedStore.live().history() } catch { self.error = SensitiveContentGuard.userMessage(error) } }
 }
 struct ManageToolsView: View {
     @State private var tools = Tool.defaults
@@ -236,19 +244,22 @@ struct ManageToolsView: View {
                 }
                 Section {
                     DisclosureGroup("匯入／匯出工具設定") {
-                    TextEditor(text: $transfer).frame(height: 120)
+                    SafeTextInput(text: $transfer, label: "工具匯入資料", onBlocked: { status = SensitiveContentGuard.message }).frame(height: 120)
                     Button("匯出並複製") {
-                        do { transfer = String(decoding: try JSONEncoder().encode(tools), as: UTF8.self); UIPasteboard.general.string = transfer; status = "已複製工具設定" } catch { status = error.localizedDescription }
+                        do { try SensitiveContentGuard.validate(value: tools); transfer = String(decoding: try JSONEncoder().encode(tools), as: UTF8.self); UIPasteboard.general.string = try SensitiveContentGuard.checked(transfer); status = "已複製工具設定" } catch { status = SensitiveContentGuard.userMessage(error) }
                     }
-                    PasteButton(payloadType: String.self) { transfer = $0.joined(separator: "\n") }
+                    PasteButton(payloadType: String.self) { values in
+                        do { transfer = try SensitiveContentGuard.checked(values.joined(separator: "\n")) } catch { status = SensitiveContentGuard.message }
+                    }
                     Button("匯入自訂工具") {
                         do {
                             guard transfer.utf8.count <= 100000 else { throw ChaiError.message("設定過大") }
                             let incoming = try JSONDecoder().decode([Tool].self, from: Data(transfer.utf8))
                             guard incoming.count <= 50, incoming.allSatisfy({ !$0.name.isEmpty && $0.prompt.count <= 8000 }) else { throw ChaiError.message("工具設定無效") }
+                            try SensitiveContentGuard.validate(value: incoming)
                             for var tool in incoming { tool.id = UUID().uuidString; tools.append(tool) }
                             if save() { status = "已匯入 \(incoming.count) 個工具" }
-                        } catch { status = error.localizedDescription }
+                        } catch { status = SensitiveContentGuard.userMessage(error) }
                     }
                     Text(status)
                     }
@@ -262,13 +273,14 @@ struct ManageToolsView: View {
                     if let index = tools.firstIndex(where: { $0.id == updated.id }) { tools[index] = updated } else { tools.append(updated) }
                     save()
                 } }
-                .onAppear { do { tools = try SharedStore.live().preferences().tools } catch { status = error.localizedDescription } }
+                .onAppear { do { tools = try SharedStore.live().preferences().tools } catch { status = SensitiveContentGuard.userMessage(error) } }
         }
     }
-    @discardableResult private func save() -> Bool { do { try SharedStore.live().updatePreferences { $0.tools = tools }; status = try StorageLocation.current().isShared ? "工具設定已儲存；重新開啟鍵盤後同步。" : "工具設定已儲存在主 App；此版本無法與鍵盤共用。"; return true } catch { status = error.localizedDescription; return false } }
+    @discardableResult private func save() -> Bool { do { try SharedStore.live().updatePreferences { $0.tools = tools }; status = try StorageLocation.current().isShared ? "工具設定已儲存；重新開啟鍵盤後同步。" : "工具設定已儲存在主 App；此版本無法與鍵盤共用。"; return true } catch { status = SensitiveContentGuard.userMessage(error); return false } }
 }
 struct ToolEditor: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var warning = ""
     @State var tool: Tool
     var onSave: (Tool) -> Void
     private let symbols = ["wand.and.stars", "text.bubble", "doc.text", "envelope", "book", "lightbulb", "star", "bolt", "list.bullet", "pencil.line", "character.bubble", "globe"]
@@ -282,19 +294,20 @@ struct ToolEditor: View {
     var body: some View {
         NavigationStack {
             Form {
+                if !warning.isEmpty { Text(warning).font(.caption).foregroundStyle(.red) }
                 Section("工具名稱與圖示") {
-                    TextField("例如：禮貌回覆", text: $tool.name)
+                    SafeLabeledInput("例如：禮貌回覆", text: $tool.name, onBlocked: { warning = SensitiveContentGuard.message })
                     Picker("圖示", selection: $tool.icon) {
                         ForEach(Array(Set(symbols + [tool.icon])).sorted(), id: \.self) { icon in Label(icon, systemImage: icon).tag(icon) }
                     }
                 }
                 Section("處理方式") {
-                    TextField("描述如何處理輸入文字", text: $tool.prompt, axis: .vertical).lineLimit(4...10)
-                    TextField("需要使用者提供什麼資料？", text: $tool.fields, axis: .vertical)
-                    TextField("輸出格式，例如：三個條列重點", text: $tool.format, axis: .vertical)
+                    SafeLabeledInput("描述如何處理輸入文字", text: $tool.prompt, onBlocked: { warning = SensitiveContentGuard.message }).lineLimit(4...10)
+                    SafeLabeledInput("需要使用者提供什麼資料？", text: $tool.fields, onBlocked: { warning = SensitiveContentGuard.message })
+                    SafeLabeledInput("輸出格式，例如：三個條列重點", text: $tool.format, onBlocked: { warning = SensitiveContentGuard.message })
                 }
                 Section("選項") {
-                    TextField("模型 ID（空白沿用全域）", text: $tool.model).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    SafeLabeledInput("模型 ID（空白沿用全域）", text: $tool.model, onBlocked: { warning = SensitiveContentGuard.message }).textInputAutocapitalization(.never).autocorrectionDisabled()
                     Toggle("顯示於面板", isOn: $tool.enabled)
                     Toggle("常用收藏", isOn: $tool.favorite)
                 }
@@ -305,6 +318,7 @@ struct ToolEditor: View {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("儲存") {
                             tool.name = tool.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard (try? SensitiveContentGuard.validate(value: tool)) != nil else { warning = SensitiveContentGuard.message; return }
                             onSave(tool); AppHaptics.tap(); dismiss()
                         }.disabled(validation != nil)
                     }

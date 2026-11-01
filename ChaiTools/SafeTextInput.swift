@@ -1,0 +1,70 @@
+import SwiftUI
+import UIKit
+
+/// Reject replacements BEFORE UITextView changes its buffer or SwiftUI receives the value.
+/// Covers system Paste, hardware typing, dictation replacements and marked text.
+struct SafeTextInput: UIViewRepresentable {
+    @Binding var text: String
+    var label: String
+    var onBlocked: () -> Void
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeUIView(context: Context) -> UITextView {
+        let view = UITextView()
+        view.delegate = context.coordinator
+        view.backgroundColor = .clear
+        view.font = .preferredFont(forTextStyle: .body)
+        view.adjustsFontForContentSizeCategory = true
+        view.textColor = .label
+        view.textContainerInset = UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
+        view.accessibilityLabel = label
+        view.autocorrectionType = .no
+        view.smartQuotesType = .no
+        view.smartDashesType = .no
+        view.isScrollEnabled = true
+        return view
+    }
+    func updateUIView(_ view: UITextView, context: Context) {
+        context.coordinator.parent = self
+        if view.text != text { view.text = (try? SensitiveContentGuard.checked(text)) ?? "" }
+        view.accessibilityLabel = label
+    }
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: SafeTextInput
+        init(_ parent: SafeTextInput) { self.parent = parent }
+        func textView(_ view: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+            let proposed = (view.text as NSString).replacingCharacters(in: range, with: text)
+            guard (try? SensitiveContentGuard.validate(proposed)) != nil else { parent.onBlocked(); return false }
+            return true
+        }
+        func textViewDidChange(_ view: UITextView) {
+            guard let safe = try? SensitiveContentGuard.checked(view.text) else {
+                view.text = parent.text; parent.onBlocked(); return
+            }
+            parent.text = safe
+        }
+    }
+}
+
+extension Binding where Value == String {
+    func guarded(onBlocked: @escaping () -> Void) -> Binding<String> {
+        Binding(get: { (try? SensitiveContentGuard.checked(wrappedValue)) ?? "" }, set: { value in
+            guard (try? SensitiveContentGuard.validate(value)) != nil else { onBlocked(); return }
+            wrappedValue = value
+        })
+    }
+}
+
+struct SafeLabeledInput: View {
+    let title: String
+    @Binding var text: String
+    var onBlocked: () -> Void
+    init(_ title: String, text: Binding<String>, onBlocked: @escaping () -> Void) {
+        self.title = title; _text = text; self.onBlocked = onBlocked
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.caption).foregroundStyle(InterfaceTheme.secondaryText)
+            SafeTextInput(text: $text, label: title, onBlocked: onBlocked).frame(height: 64)
+        }
+    }
+}

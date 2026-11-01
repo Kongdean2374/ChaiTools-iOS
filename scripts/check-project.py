@@ -73,9 +73,21 @@ assert 'handleInputModeList' in controller
 metrics = (root/'Shared/KeyboardLayoutMetrics.swift').read_text()
 assert 'tool' not in metrics.split('enum KeyboardLayoutMetrics')[1].lower()
 keyboard = (root/'ChaiToolsKeyboard/KeyboardPanel.swift').read_text()
-assert 'accessibilityReduceMotion' in keyboard and 'prefix(8)' in keyboard
+assert 'accessibilityReduceMotion' in keyboard and 'prefix(6)' in keyboard
 assert 'TextField(' not in keyboard and 'TextEditor(' not in keyboard
 editor = (root/'ChaiTools/ToolWorkspace.swift').read_text()
-assert 'Form {' not in editor and 'ShareLink(item: model.result)' in editor
+assert 'Form {' not in editor and 'UIActivityViewController(activityItems:' in editor
 assert 'configuration: options.prompt' in editor
 print('PASS: single keyboard host, no fixed 360/globe row, geometry-only sizing, real editor/share and keyboard paste paths')
+
+# Security boundaries are also exercised by SecurityTests with synthetic values.
+bridge = (root/'ChaiToolsKeyboard/KeyboardBridge.swift').read_text()
+assert bridge.index('SensitiveContentGuard.validate(text)') < bridge.index('case "home": homeSource = text')
+assert bridge.index('SensitiveContentGuard.validate(selected)') < bridge.index('snapshot = SelectionFingerprint(')
+assert 'try model.output()' in bridge and 'try model.output()' in editor
+assert 'ZStack(alignment: .top)' not in keyboard, 'Notices must not obscure keyboard content'
+assert 'SafeTextInput' in editor and 'shouldChangeTextIn' in (root/'ChaiTools/SafeTextInput.swift').read_text()
+assert 'private(set) var task' in (root/'Shared/WorkspaceModel.swift').read_text()
+import re
+assert not re.search(r'\bprint\s*\(', '\n'.join(p.read_text() for d in ['Shared', 'ChaiTools', 'ChaiToolsKeyboard'] for p in (root/d).glob('*.swift')))
+print('PASS: screened input/publication, output boundaries, pre-mutation editor and non-overlay keyboard notices')

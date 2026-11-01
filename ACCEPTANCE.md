@@ -1,5 +1,7 @@
 # 驗收紀錄
 
+最新 **1.3.0** 安全／聊天工作台驗收見 [SECURITY_UI_REVIEW_1.3.0.md](SECURITY_UI_REVIEW_1.3.0.md)。下列 1.2.0 與更早結果屬歷史版本，不能視為本版通過。
+
 2026-11-01：1.2.0 主改版 `b2a3903` 已通過 [GitHub Actions](https://github.com/Kongdean2374/ChaiTools-iOS/actions/runs/41278989139)：10 項核心測試、Release iphoneos App／Keyboard 編譯、IPA 結構與平台驗證、產物上傳。後續收尾調整（設定讀取中提示、複製按鈕層級）另觸發建置；請以 main 最新 run 作為下載來源。沒有啟用 App／UI 自動測試。 以下操作矩陣是仍需真機執行的驗收項目；本地無 Apple 裝置／模擬器。
 
 | 項目 | 操作／判定 |

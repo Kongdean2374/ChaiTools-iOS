@@ -5,6 +5,8 @@ import UIKit
     @Published var preferences = Preferences()
     @Published var key = "" { didSet { pasteNotice = nil } }
     @Published var pasteNotice: OperationNotice?
+    @Published var clipboardMayContainKey = false
+    @Published var connectionStatus = "尚未測試"
     @Published var hasKey = false
     @Published var sharingAvailable = false
     @Published var legacyCleanupMessage: String?
@@ -17,14 +19,15 @@ import UIKit
     private var operationID: UUID?
     var busy: Bool { activity != nil }
 
+    func blocked() { finish("已攔截敏感內容", SensitiveContentGuard.message, kind: .failure) }
     func load() {
         legacyCleanupMessage = LegacyCredentialCleanup.runOnce()
         do { sharingAvailable = try StorageLocation.current().isShared }
-        catch { finish("無法存取儲存空間", error.localizedDescription, kind: .failure, showAlert: false) }
+        catch { finish("無法存取儲存空間", SensitiveContentGuard.userMessage(error), kind: .failure, showAlert: false) }
         do { preferences = try SharedStore.live().preferences() }
-        catch { finish("無法讀取偏好", error.localizedDescription, kind: .failure, showAlert: false) }
+        catch { finish("無法讀取偏好", SensitiveContentGuard.userMessage(error), kind: .failure, showAlert: false) }
         do { hasKey = try CredentialStore.hasKey() }
-        catch { finish("無法讀取金鑰", error.localizedDescription, kind: .failure, showAlert: false) }
+        catch { finish("無法讀取金鑰", SensitiveContentGuard.userMessage(error), kind: .failure, showAlert: false) }
     }
     func pasteKey() {
         guard !busy else { return }
@@ -35,12 +38,19 @@ import UIKit
         }
         do {
             let clean = try APIKeyInput.normalize(clipboard)
-            key = clean
-            pasteNotice = OperationNotice(title: "金鑰已貼入", message: "已填入 \(clean.count) 個字元並保持遮罩。請接著點『儲存金鑰』；尚未儲存或測試連線。", kind: .success)
+            SensitiveContentGuard.remember([.init(key: clean)])
+            key = clean; clipboardMayContainKey = true
+            pasteNotice = OperationNotice(title: "金鑰已貼入", message: "已填入 \(clean.count) 個字元並保持遮罩。請接著點『儲存金鑰』；尚未儲存或測試連線。剪貼簿可能仍保留金鑰，可用下方按鈕清除。", kind: .success)
             AppHaptics.result(success: true)
         } catch {
-            pasteNotice = OperationNotice(title: "未貼上金鑰", message: error.localizedDescription + " 原輸入已保留。", kind: .failure)
+            pasteNotice = OperationNotice(title: "未貼上金鑰", message: SensitiveContentGuard.userMessage(error) + " 原輸入已保留。", kind: .failure)
         }
+    }
+    func clearClipboard() {
+        // Explicit action only; no inspection of another app's clipboard.
+        UIPasteboard.general.items = []
+        clipboardMayContainKey = false
+        pasteNotice = OperationNotice(title: "剪貼簿已清除", message: "已清空目前剪貼簿；不影響已儲存的金鑰。", kind: .success)
     }
     func clearKeyInput() {
         guard !busy else { return }
@@ -52,17 +62,20 @@ import UIKit
         do {
             let clean = try APIKeyInput.normalize(key)
             try CredentialStore.save(clean)
-            hasKey = true; key = ""
+            hasKey = true; key = ""; connectionStatus = "尚未測試"
+            NotificationCenter.default.post(name: Notification.Name("ChaiToolsCredentialsChanged"), object: nil)
             finish("金鑰已安全儲存", "已存入 App 的加密保護檔案並完成讀回驗證。接著點『測試 API 連線』確認模型是否可用。", kind: .success)
-        } catch { finish("儲存失敗", error.localizedDescription, kind: .failure) }
+        } catch { finish("儲存失敗", SensitiveContentGuard.userMessage(error), kind: .failure) }
     }
     func deleteKey() {
         guard !busy else { return }
         do {
-            try CredentialStore.delete(); hasKey = false; key = ""; models = []
+            try CredentialStore.delete(); hasKey = false; key = ""; models = []; connectionStatus = "尚未測試"
+            try SharedStore.live().delete()
+            NotificationCenter.default.post(name: Notification.Name("ChaiToolsCredentialsChanged"), object: nil)
             legacyCleanupMessage = LegacyCredentialCleanup.runOnce()
             finish("金鑰已刪除", "之後的 AI 請求需要重新設定金鑰。本機計算仍可使用。", kind: .success)
-        } catch { finish("無法刪除金鑰", error.localizedDescription, kind: .failure) }
+        } catch { finish("無法刪除金鑰", SensitiveContentGuard.userMessage(error), kind: .failure) }
     }
     private func savedKey() throws -> String {
         guard key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -77,12 +90,15 @@ import UIKit
         do {
             let saved = try savedKey()
             let p = preferences
+            try SensitiveContentGuard.validate(value: p)
+            connectionStatus = "測試中"
             guard !p.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw ChaiError.message("請先填入模型 ID。") }
             start("正在測試 \(p.model)") {
                 let answer = try await AIClient().run(tool: Tool(id: "test", name: "連線測試", icon: "checkmark", prompt: "只回覆 OK。"), source: "連線測試", instruction: "簡短回覆", preferences: p, key: saved, maxOutputTokens: 1024)
+                self.connectionStatus = "目前模型連線成功"
                 return ("API 連線成功", "已收到 \(p.model) 的真實回應。輸入 \(answer.inputTokens)、輸出 \(answer.outputTokens) tokens。這次測試不代表所有工具都受模型支援。")
             }
-        } catch { finish("無法開始測試", error.localizedDescription, kind: .failure) }
+        } catch { finish("無法開始測試", SensitiveContentGuard.userMessage(error), kind: .failure) }
     }
     func scanModels() {
         guard !busy else { return }
@@ -94,7 +110,7 @@ import UIKit
                 self.models = list
                 return ("模型清單已更新", "取得 \(list.count) 個模型。選擇後請儲存偏好，並測試 API 連線。")
             }
-        } catch { finish("無法掃描模型", error.localizedDescription, kind: .failure) }
+        } catch { finish("無法掃描模型", SensitiveContentGuard.userMessage(error), kind: .failure) }
     }
     func savePreferences() {
         do {
@@ -103,13 +119,13 @@ import UIKit
             try SharedStore.live().updatePreferences { $0.model = model; $0.language = preferences.language; $0.context = preferences.context }
             preferences.model = model
             finish("偏好已儲存", sharingAvailable ? "模型、語言與語境已更新；重新開啟鍵盤後會讀取這些設定。" : "模型、語言與語境已儲存在主 App。此安裝版本無法與鍵盤共用資料。", kind: .success)
-        } catch { finish("偏好儲存失敗", error.localizedDescription, kind: .failure) }
+        } catch { finish("偏好儲存失敗", SensitiveContentGuard.userMessage(error), kind: .failure) }
     }
     func setHistory(_ enabled: Bool) {
         do {
             try SharedStore.live().updatePreferences { $0.history = enabled }; preferences.history = enabled
             finish(enabled ? "已開啟工作紀錄" : "已關閉並清除工作紀錄", enabled ? "最多保留 7 天／50 筆，可隨時關閉。" : "之後的原文與結果不會永久儲存。", kind: .success)
-        } catch { finish("紀錄設定失敗", error.localizedDescription, kind: .failure) }
+        } catch { finish("紀錄設定失敗", SensitiveContentGuard.userMessage(error), kind: .failure) }
     }
     private func start(_ title: String, action: @escaping @MainActor () async throws -> (String, String)) {
         let id = UUID(); operationID = id; activity = title; started = Date()
@@ -124,6 +140,7 @@ import UIKit
             } catch {
                 guard operationID == id else { return }
                 activity = nil; operationID = nil; operation = nil
+                connectionStatus = "未完成，請重試"
                 finish("請求未完成", Self.errorMessage(error), kind: .failure)
             }
         }
@@ -134,7 +151,7 @@ import UIKit
         finish("已取消請求", "沒有修改已儲存的金鑰與偏好。", kind: .info, showAlert: false)
     }
     private func finish(_ title: String, _ message: String, kind: OperationNotice.Kind, showAlert: Bool = true) {
-        let update = OperationNotice(title: title, message: message, kind: kind)
+        let update = OperationNotice(title: (try? SensitiveContentGuard.checked(title)) ?? "操作狀態", message: (try? SensitiveContentGuard.checked(message)) ?? SensitiveContentGuard.message, kind: kind)
         notice = update
         if showAlert { alert = update }
         AppHaptics.result(success: kind != .failure)
@@ -148,6 +165,6 @@ import UIKit
             default: return "網路連線失敗（\(e.code.rawValue)），請確認網路後重試。"
             }
         }
-        return error.localizedDescription
+        return SensitiveContentGuard.userMessage(error)
     }
 }

@@ -2,13 +2,27 @@
 
 ChaiTools 是 iOS 17+ 原生 SwiftUI 工作台與 UIKit 第三方 AI 鍵盤。沒有網站包裝、額外後端、廣告 SDK、登入或建置用 API 金鑰。
 
+## 1.3.0 安全與聊天工作台
+
+主入口為單一對話工作台：輸入主題或貼上原文 → 選模式 → 送出 → 在同一對話追加要求；詳細參數收在情境設定。工具目錄／收藏、歷史與自訂工具仍保留。鍵盤改為最多六項快捷及固定三階段操作，提示從頂列展開，不遮住按鈕。
+
+**若曾把真金鑰貼入普通文字或看到它出現在結果，請自行撤銷該金鑰、建立新金鑰並檢查 API 用量。不要把真金鑰傳到聊天、Issue 或 CI。** 這次沒有讀取使用者真金鑰，也尚不能確定真機事件的完整傳播路徑。
+
+一般文字入口、回覆、歷史及分享出口均經 SensitiveContentGuard 檢查。常見格式／簡易空白與控制字元變形，以及已知金鑰指紋會被阻擋；不是任意編碼、拆分、加密或未知供應商憑證的通用防洩漏保證。可能保守攔截很像憑證的程式範例；請用 `sk-...` 等短佔位符。
+
+為攔截既有非標準格式金鑰，1.3.0 在 App／鍵盤啟用時於本機讀取已儲存金鑰建立 SHA-256 指紋，從不交給普通 View 或日誌。指紋存於同一受保護目錄，刪除金鑰後仍保留，防止舊值再次貼入；正常刪除 App 會移除其私有資料。已偵測污染的歷史／偏好檔會整檔移除（包含其中正常紀錄），不另留含秘密的隔離副本。歷史只保留通過檢查的內容；沒有遙測或遠端 Crash SDK。
+
+完整取用與 App Group 不是同一種權限。未簽名 IPA 無法保證最終安裝的授權；若系統不提供共同容器，鍵盤 AI **仍不可用**，主 App 與本機計算仍可使用，不會用剪貼簿或網址搬運金鑰。完整技術結論、測試與待驗收畫面見 [1.3.0 報告](SECURITY_UI_REVIEW_1.3.0.md)。
+
+行動端持有長期金鑰仍有風險：裝置遭入侵、其他 App 的剪貼簿副本或已送到外部服務的資料，無法靠本次更新回收；本工具不宣稱無漏洞。
+
 ## 取得未簽名 IPA
 
 [開啟 GitHub Actions 建置頁面](https://github.com/Kongdean2374/ChaiTools-iOS/actions/workflows/build-unsigned-ipa.yml)。`main` 的 push 或手動 Run workflow 會執行 `.github/workflows/build-unsigned-ipa.yml`。
 
 成功後，在該次 run 的 **Artifacts → ChaiTools-unsigned-IPA** 下載，裡面包含 **ChaiTools-unsigned.ipa** 與 SHA-256。保留 14 天。不需要設定 GitHub Secrets。尚在建置或失敗時沒有可下載的有效 IPA。
 
-依 1.2.0 改版計劃，CI 執行不含 API 金鑰的核心單元測試，再使用 XcodeGen 產生工程；不啟用 App／UI 測試或模擬器，建置 Release / iphoneos / arm64 App 與內嵌 Keyboard Extension，關閉程式碼簽署。腳本檢查 ZIP、Mach-O、iOS 平台、版本、Bundle ID、鍵盤服務及完整取用設定後才上傳。任一步驟失敗即使工作流程失敗，不以空 ZIP 交付。
+依 1.3.0 改版計劃，CI 執行不含 API 金鑰的核心單元測試，再使用 XcodeGen 產生工程；不啟用 App／UI 測試或模擬器，建置 Release / iphoneos / arm64 App 與內嵌 Keyboard Extension，關閉程式碼簽署。腳本檢查 ZIP、Mach-O、iOS 平台、版本、Bundle ID、鍵盤服務及完整取用設定後才上傳。任一步驟失敗即使工作流程失敗，不以空 ZIP 交付。
 
 ## 已實作的流程
 
@@ -95,7 +109,7 @@ bash scripts/build-unsigned-ipa.sh
 
 新增真正的 AppIcon 資源、品牌首頁、工具搜尋與說明、鍵盤指南和隱私頁。原創圖示可由 `scripts/generate-icon.py` 重現（僅重繪需 Pillow；CI 直接使用已提交 PNG，不需安裝 Pillow）。詳見 [CHANGELOG.md](CHANGELOG.md)。
 
-每次功能更新須遞增可見版本：`python3 scripts/bump-version.py 1.2.1`。腳本要求新版本大於目前版本，更新 VERSION 與 project.yml；App／Extension 共用版本，設定頁讀取 Bundle，Build Number 由 Actions run number 遞增。不以重跑 CI 代替發行版本更新。
+每次功能更新須遞增可見版本：`python3 scripts/bump-version.py 1.3.1`。腳本要求新版本大於目前版本，更新 VERSION 與 project.yml；App／Extension 共用版本，設定頁讀取 Bundle，Build Number 由 Actions run number 遞增。不以重跑 CI 代替發行版本更新。
 
 本次新增檢查：圖示 1024×1024、RGB 無透明、asset manifest、版本一致、Shell／Python 語法。程式碼已人工檢查，但此環境沒有 Swift／Xcode，尚不能宣稱編譯或真機已驗證。依使用者要求不新增 GitHub App／UI 測試，也不持續等待產物。
 

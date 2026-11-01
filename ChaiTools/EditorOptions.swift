@@ -16,17 +16,19 @@ struct EditorOptions {
 }
 struct EditorOptionsView: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var warning = ""
     let tool: Tool
     @Binding var preferences: Preferences
     @Binding var options: EditorOptions
     var body: some View {
         NavigationStack {
             Form {
+                if !warning.isEmpty { Text(warning).font(.caption).foregroundStyle(.red) }
                 Section("語言與情境") {
-                    TextField("目標語言", text: $preferences.language)
-                    TextField("語境／對象", text: $preferences.context)
+                    SafeLabeledInput("目標語言", text: $preferences.language, onBlocked: { warning = SensitiveContentGuard.message })
+                    SafeLabeledInput("語境／對象", text: $preferences.context, onBlocked: { warning = SensitiveContentGuard.message })
                     if tool.id == "translate" {
-                        TextField("來源語言", text: $options.sourceLanguage)
+                        SafeLabeledInput("來源語言", text: $options.sourceLanguage, onBlocked: { warning = SensitiveContentGuard.message })
                         Toggle("詳細翻譯解析", isOn: $options.detailed)
                     }
                     if tool.id == "language" { Toggle("詳細學習模式", isOn: $options.detailed) }
@@ -42,8 +44,8 @@ struct EditorOptionsView: View {
                 if tool.id == "generate" {
                     Section("寫作需求") {
                         Picker("類型", selection: $options.kind) { ForEach(["一般訊息", "Email 草稿", "文章", "摘要", "公告", "說明文", "創意文案", "社群貼文", "自由格式"], id: \.self) { Text($0) } }
-                        TextField("讀者對象", text: $options.audience)
-                        TextField("必須包含／避免的內容", text: $options.constraints, axis: .vertical)
+                        SafeLabeledInput("讀者對象", text: $options.audience, onBlocked: { warning = SensitiveContentGuard.message })
+                        SafeLabeledInput("必須包含／避免的內容", text: $options.constraints, onBlocked: { warning = SensitiveContentGuard.message })
                     }
                 }
                 if tool.id == "summary" {

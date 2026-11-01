@@ -30,7 +30,7 @@ struct ToolListView: View {
                     }.buttonStyle(QuietButtonStyle())
                 }.padding(16)
             }.appSurface().navigationTitle("ChaiTools").navigationBarTitleDisplayMode(.inline)
-                .searchable(text: $query, prompt: "搜尋工具")
+                .searchable(text: $query.guarded(onBlocked: { error = SensitiveContentGuard.message }), prompt: "搜尋工具")
                 .sheet(isPresented: $showSettings, onDismiss: { Task { await load() } }) { SettingsView() }
                 .task { await load() }
         }
@@ -91,7 +91,7 @@ struct ToolListView: View {
             do {
                 let store = try SharedStore.live(); let p = try store.preferences()
                 return (p, p.history ? Array(try store.history().prefix(2)) : [], try CredentialStore.hasKey(), "")
-            } catch { return (nil, [], false, error.localizedDescription) }
+            } catch { return (nil, [], false, SensitiveContentGuard.userMessage(error)) }
         }.value
         guard !Task.isCancelled else { return }
         if let p = loaded.0 { preferences = p }; recent = loaded.1; hasKey = loaded.2; error = loaded.3
