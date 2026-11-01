@@ -9,6 +9,8 @@ struct AIClient {
         config.timeoutIntervalForRequest = 60
         config.timeoutIntervalForResource = 60
         config.urlCache = nil
+        config.httpCookieStorage = nil
+        config.urlCredentialStorage = nil
         return URLSession(configuration: config)
     }()
     var session: URLSession = AIClient.liveSession
@@ -45,6 +47,8 @@ struct AIClient {
         let input = "目標語言：\(preferences.language)；語境：\(preferences.context)\n工具欄位：\(tool.fields)\n輸出格式：\(tool.format)\n使用者要求：\(instruction)\n<source>\n\(source)\n</source>"
         var body: [String: Any] = ["model":tool.model.isEmpty ? preferences.model : tool.model,"store":false,"instructions":system,"input":input,"max_output_tokens":maxOutputTokens]
         if tool.id == "search" { body["tools"] = [["type":"web_search"]]; body["tool_choice"] = "required" }
+        // Credentials belong only in the Authorization header, never in the model payload.
+        try CredentialPayloadGuard.validate(body, key: key)
         let data = try await request("responses", key: key, body: body)
         var answer = try Self.parse(data)
         if tool.id == "search", !answer.searched { throw ChaiError.message("無法即時查詢：API 未執行網路搜尋。請改用支援 web_search 的模型。") }

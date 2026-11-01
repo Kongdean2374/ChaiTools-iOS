@@ -3,7 +3,8 @@ import UIKit
 
 @MainActor final class SettingsModel: ObservableObject {
     @Published var preferences = Preferences()
-    @Published var key = ""
+    @Published var key = "" { didSet { pasteNotice = nil } }
+    @Published var pasteNotice: OperationNotice?
     @Published var hasKey = false
     @Published var models: [String] = []
     @Published var notice: OperationNotice?
@@ -17,23 +18,44 @@ import UIKit
     func load() {
         do { preferences = try SharedStore.live().preferences() }
         catch { finish("無法讀取偏好", error.localizedDescription, kind: .failure, showAlert: false) }
-        do { hasKey = !(try Keychain.load()).isEmpty }
+        do { hasKey = try CredentialStore.hasKey() }
         catch { finish("無法讀取金鑰", error.localizedDescription, kind: .failure, showAlert: false) }
+    }
+    func pasteKey() {
+        guard !busy else { return }
+        // Read only in response to this explicit button tap. Never on appearance.
+        guard let clipboard = UIPasteboard.general.string else {
+            pasteNotice = OperationNotice(title: "尚未取得文字", message: "請先複製純文字金鑰，再點貼上。若 iOS 詢問是否允許貼上，請允許；若曾拒絕，可在 iOS 的 ChaiTools 設定中檢查『從其他 App 貼上』權限。原輸入已保留。", kind: .failure)
+            return
+        }
+        do {
+            let clean = try APIKeyInput.normalize(clipboard)
+            key = clean
+            pasteNotice = OperationNotice(title: "金鑰已貼入", message: "已填入 \(clean.count) 個字元並保持遮罩。請接著點『儲存金鑰』；尚未儲存或測試連線。", kind: .success)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        } catch {
+            pasteNotice = OperationNotice(title: "未貼上金鑰", message: error.localizedDescription + " 原輸入已保留。", kind: .failure)
+        }
+    }
+    func clearKeyInput() {
+        guard !busy else { return }
+        key = ""
+        pasteNotice = OperationNotice(title: "輸入欄已清空", message: "沒有刪除 App 中已儲存的金鑰。")
     }
     func saveKey() {
         guard !busy else { return }
         do {
-            let clean = key.trimmingCharacters(in: .whitespacesAndNewlines)
-            try Keychain.save(clean)
-            guard try Keychain.load() == clean else { throw ChaiError.message("金鑰寫入後讀回不一致，尚未確認儲存成功。") }
+            let clean = try APIKeyInput.normalize(key)
+            try CredentialStore.save(clean)
             hasKey = true; key = ""
-            finish("金鑰已安全儲存", "已寫入並讀回 Keychain。接著點『測試 API 連線』確認模型是否可用。", kind: .success)
+            finish("金鑰已安全儲存", "已存入 App 的加密保護檔案並完成讀回驗證。接著點『測試 API 連線』確認模型是否可用。", kind: .success)
         } catch { finish("儲存失敗", error.localizedDescription, kind: .failure) }
     }
     func deleteKey() {
         guard !busy else { return }
         do {
-            try Keychain.delete(); hasKey = false; key = ""; models = []
+            try CredentialStore.delete(); hasKey = false; key = ""; models = []
+            try LegacyCredentialCleanup.runOnce()
             finish("金鑰已刪除", "之後的 AI 請求需要重新設定金鑰。本機計算仍可使用。", kind: .success)
         } catch { finish("無法刪除金鑰", error.localizedDescription, kind: .failure) }
     }
@@ -41,7 +63,7 @@ import UIKit
         guard key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw ChaiError.message("輸入欄中有尚未儲存的金鑰。請先點『儲存金鑰』，避免測試到舊金鑰。")
         }
-        let saved = try Keychain.load()
+        let saved = try CredentialStore.load()
         guard !saved.isEmpty else { throw ChaiError.message("尚未儲存 API 金鑰。請在上方輸入後點『儲存金鑰』。") }
         return saved
     }
@@ -92,11 +114,11 @@ import UIKit
                 let result = try await action()
                 try Task.checkCancellation()
                 guard operationID == id else { return }
-                activity = nil; operationID = nil
+                activity = nil; operationID = nil; operation = nil
                 finish(result.0, result.1, kind: .success)
             } catch {
                 guard operationID == id else { return }
-                activity = nil; operationID = nil
+                activity = nil; operationID = nil; operation = nil
                 finish("請求未完成", Self.errorMessage(error), kind: .failure)
             }
         }

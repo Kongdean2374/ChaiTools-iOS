@@ -42,3 +42,15 @@ assert (width, height, depth, color) == (1024, 1024, 8, 2), 'Icon must be opaque
 for path in (root/'ChaiTools/Assets.xcassets').rglob('Contents.json'):
     json.loads(path.read_text())
 print('PASS: version consistency, app icon configuration, opaque 1024px icon, asset manifests')
+
+source = '\n'.join(p.read_text() for p in root.rglob('*.swift'))
+for forbidden in ['SecItemAdd(', 'SecItemUpdate(', 'SecItemCopyMatching(', 'Keychain.load(', 'Keychain.save(']:
+    assert forbidden not in source, forbidden
+assert source.count('SecItemDelete(') == 1, 'Only scoped delete-only legacy cleanup is allowed'
+store = (root/'Shared/CredentialStore.swift').read_text()
+for required in ['.completeFileProtection', '.isExcludedFromBackup = true', '.posixPermissions: 0o600', '.posixPermissions: 0o700', '.atomic']:
+    assert required in store
+client = (root/'Shared/AIClient.swift').read_text()
+assert client.index('CredentialPayloadGuard.validate(body, key: key)') < client.index('request("responses", key: key, body: body)')
+assert not (root/'Shared/Keychain.swift').exists()
+print('PASS: protected credential file configuration, no Keychain reads/writes, payload guard before network')

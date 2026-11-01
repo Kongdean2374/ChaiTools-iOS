@@ -1,11 +1,11 @@
 import SwiftUI
+import UIKit
 
 struct SettingsView: View {
     @StateObject private var model = SettingsModel()
     @State private var filter = ""
     @State private var deleteConfirmation = false
     @State private var clearHistoryConfirmation = false
-    @FocusState private var editingKey: Bool
     var body: some View {
         NavigationStack {
             Form {
@@ -46,24 +46,37 @@ struct SettingsView: View {
                 .onDisappear { model.cancel() }
         }
     }
+    private func dismissKeyKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
     private var credentials: some View {
         Section {
             Label(model.hasKey ? "已儲存金鑰" : "尚未設定金鑰", systemImage: model.hasKey ? "key.fill" : "key")
                 .foregroundStyle(model.hasKey ? Color.teal : Color.secondary)
-            SecureField(model.hasKey ? "輸入新金鑰以替換" : "貼上 OpenAI API 金鑰", text: $model.key)
-                .textInputAutocapitalization(.never).autocorrectionDisabled().focused($editingKey)
-                .disabled(model.busy).privacySensitive().submitLabel(.done).onSubmit { editingKey = false }
-            Button { editingKey = false; model.saveKey() } label: {
+            APIKeyTextField(text: $model.key, placeholder: model.hasKey ? "輸入新金鑰以替換" : "貼上 OpenAI API 金鑰", isEnabled: !model.busy)
+                .frame(minHeight: 44).privacySensitive()
+            HStack {
+                Button { dismissKeyKeyboard(); model.pasteKey() } label: {
+                    Label("貼上金鑰", systemImage: "doc.on.clipboard")
+                }.buttonStyle(.bordered).disabled(model.busy)
+                Spacer()
+                Button("清空輸入") { model.clearKeyInput() }
+                    .buttonStyle(.borderless).disabled(model.busy || model.key.isEmpty)
+            }
+            Text(model.key.isEmpty ? "可長按輸入框貼上，或點『貼上金鑰』。" : "輸入欄已有 \(model.key.count) 個字元，尚未儲存。")
+                .font(.caption).foregroundStyle(.secondary)
+            if let pasteNotice = model.pasteNotice { NoticeCard(notice: pasteNotice) }
+            Button { dismissKeyKeyboard(); model.saveKey() } label: {
                 Label("儲存金鑰", systemImage: "lock.shield").frame(maxWidth: .infinity, minHeight: 32)
             }.buttonStyle(.borderedProminent).disabled(model.busy)
-            Button { editingKey = false; model.testConnection() } label: {
+            Button { dismissKeyKeyboard(); model.testConnection() } label: {
                 Label("測試 API 連線", systemImage: "antenna.radiowaves.left.and.right").frame(maxWidth: .infinity, minHeight: 32)
             }.buttonStyle(.bordered).disabled(model.busy)
             if model.hasKey {
                 Button("刪除金鑰", role: .destructive) { deleteConfirmation = true }.disabled(model.busy)
             }
         } header: { Text("01 · 連線設定") } footer: {
-            Text("儲存會讀回 Keychain 確認；測試會實際呼叫下方所選模型，可能產生少量 API 費用。新金鑰請先儲存再測試。")
+            Text("金鑰存於 App 的加密保護檔案，排除備份；儲存後會讀回確認；測試會實際呼叫下方所選模型，可能產生少量 API 費用。新金鑰請先儲存再測試。")
         }
     }
     private var preferences: some View {
@@ -73,8 +86,8 @@ struct SettingsView: View {
             }
             LabeledContent("語言") { TextField("預設語言", text: $model.preferences.language).multilineTextAlignment(.trailing) }
             LabeledContent("語境") { TextField("例如：臺灣日常", text: $model.preferences.context).multilineTextAlignment(.trailing) }
-            Button { editingKey = false; model.savePreferences() } label: { Label("儲存偏好", systemImage: "checkmark.circle") }
-            Button { editingKey = false; model.scanModels() } label: { Label("掃描可用模型", systemImage: "arrow.clockwise") }
+            Button { dismissKeyKeyboard(); model.savePreferences() } label: { Label("儲存偏好", systemImage: "checkmark.circle") }
+            Button { dismissKeyKeyboard(); model.scanModels() } label: { Label("掃描可用模型", systemImage: "arrow.clockwise") }
             if !model.models.isEmpty {
                 NavigationLink {
                     List {
@@ -141,9 +154,9 @@ struct PrivacyGuideView: View {
     var body: some View {
         List {
             Section("只處理你主動送出的文字") { Text("只有按下執行時，選定內容與必要指令才會傳送至 OpenAI。鍵盤不會自動讀取剪貼簿，不會擷取整個聊天紀錄。") }
-            Section("本機保存") { Text("金鑰保存在 Keychain。紀錄預設關閉；啟用後保留 7 天、50 筆，可隨時清除。沒有自建雲端資料庫或分析 SDK。") }
+            Section("本機保存") { Text("金鑰只保存在 App 私有共享容器的檔案，使用 iOS 完整檔案保護（鎖屏不可讀），排除備份。刪除 App 時會隨本 App 的容器清除；『卸載 App』會保留資料，不等同刪除。紀錄預設關閉；啟用後保留 7 天、50 筆，可隨時清除。沒有自建雲端資料庫或分析 SDK。") }
             Section("API 與費用") { Text("使用 store=false，但不代表 OpenAI 零資料保留。費用依帳號與模型計算；App 顯示的 token 用量不是帳務餘額。") }
-            Section("金鑰保護") { Text("Keychain 不能消除裝置遭入侵的風險。App 與鍵盤的共享權限必須一致；讀寫失敗會顯示原因，不會假報成功。") }
+            Section("金鑰保護") { Text("金鑰不進提示詞、工作紀錄、匯出或鍵盤插入；只用於 OpenAI HTTPS 授權。檔案保護無法消除裝置遭入侵的風險。App 與鍵盤的共享權限必須一致；讀寫失敗會顯示原因，不會假報成功。") }
         }.navigationTitle("資料與隱私").navigationBarTitleDisplayMode(.inline)
     }
 }

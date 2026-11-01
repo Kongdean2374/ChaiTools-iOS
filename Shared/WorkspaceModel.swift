@@ -28,9 +28,9 @@ import SwiftUI
         let requestInstruction = instruction
         let requestTool = task.tool
         pending = Task {
-            defer { if requestID == id { busy = false; requestID = nil } }
+            defer { if requestID == id { busy = false; requestID = nil; pending = nil } }
             do {
-                let key = try Keychain.load()
+                let key = try CredentialStore.load()
                 let answer = try await AIClient().run(tool: requestTool, source: input, instruction: requestInstruction, preferences: preferences, key: key)
                 try Task.checkCancellation()
                 guard requestID == id else { return }

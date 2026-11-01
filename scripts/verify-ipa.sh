@@ -32,6 +32,5 @@ assert a.get('CFBundleIcons', {}).get('CFBundlePrimaryIcon', {}).get('CFBundleIc
 assert e['NSExtension']['NSExtensionPointIdentifier'] == 'com.apple.keyboard-service'
 assert e['NSExtension']['NSExtensionAttributes']['RequestsOpenAccess'] is True
 assert a['SharedAppGroup'] == e['SharedAppGroup']
-assert a['SharedKeychainGroup'] == e['SharedKeychainGroup']
 print('Verified: unsigned iOS arm64 App + keyboard extension, matching version and shared identifiers.')
 PY

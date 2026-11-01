@@ -40,7 +40,5 @@
 	</dict>
 	<key>SharedAppGroup</key>
 	<string>$(SHARED_APP_GROUP)</string>
-	<key>SharedKeychainGroup</key>
-	<string>$(SHARED_KEYCHAIN_GROUP)</string>
 </dict>
 </plist>

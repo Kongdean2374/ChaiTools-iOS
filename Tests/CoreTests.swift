@@ -5,6 +5,26 @@ import FoundationNetworking
 #endif
 
 final class CoreTests: XCTestCase {
+    func testKeyInputPreservesValueAndRejectsInvalidPaste() throws {
+        XCTAssertEqual(try APIKeyInput.normalize("  sample-credential-value\n"), "sample-credential-value")
+        for input in ["", " \n", "two words", "a\nb", "a\0b", String(repeating: "x", count: 8193)] {
+            XCTAssertThrowsError(try APIKeyInput.normalize(input))
+        }
+    }
+    func testCredentialIsBlockedInEveryPayloadField() throws {
+        let secret = "sample-secret-for-tests"
+        try CredentialPayloadGuard.validate(["model": "model", "input": "ordinary text", "store": false], key: secret)
+        let payloads: [[String: Any]] = [
+            ["input": "prefix " + secret], ["instructions": secret], ["model": secret],
+            ["tools": [["nested": secret]]], [secret: "value"]
+        ]
+        for payload in payloads {
+            XCTAssertThrowsError(try CredentialPayloadGuard.validate(payload, key: secret)) { error in
+                XCTAssertFalse(error.localizedDescription.contains(secret))
+            }
+        }
+        XCTAssertThrowsError(try CredentialPayloadGuard.validate(["input": "normal"], key: ""))
+    }
     func testArithmetic() throws {
         XCTAssertEqual(try Calculator.evaluate("(2+3)*4-6/2"), 17)
         XCTAssertEqual(try Calculator.evaluate("200*(1+10%)"), 220, accuracy: 0.00001)

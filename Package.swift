@@ -5,7 +5,7 @@ let package = Package(
     platforms: [.macOS(.v13)],
     products: [.library(name: "ChaiToolsCore", targets: ["ChaiToolsCore"])],
     targets: [
-        .target(name: "ChaiToolsCore", path: "Shared", exclude: ["Keychain.swift", "WorkspaceModel.swift"]),
+        .target(name: "ChaiToolsCore", path: "Shared", exclude: ["WorkspaceModel.swift"]),
         .testTarget(name: "ChaiToolsCoreTests", dependencies: ["ChaiToolsCore"], path: "Tests")
     ]
 )

@@ -19,12 +19,12 @@ ChaiTools 是 iOS 17+ 原生 SwiftUI 工作台與 UIKit 第三方 AI 鍵盤。�
 - 本機計算：四則運算、括號、正負號、百分比；長度／重量／溫度換算與圓面積範例。自然語言數學題由模型產生算式，再由本機計算，顯示算式、單位與推導。沒有即時匯率資料源，不提供即時匯率。
 - 結果全文編輯、複製、追加修訂、快捷修改、前後版本切換、上一版對照。局部改寫以將段落放入來源欄的方式完成。草稿需明確儲存且開啟紀錄。
 - 工具新增／編輯／啟用停用／收藏／排序／自訂工具刪除／JSON 文字匯入匯出。輸入欄位以說明欄提供，不執行程式碼。匯入建立新 ID，避免覆寫內建工具。
-- Keychain 金鑰儲存／變更／刪除、真實模型回應測試、`GET /v1/models` 掃描與篩選；預設模型 ID 為 `gpt-6.1-terra`。不保證每個帳號可用，失敗需手動選擇可用模型。
+- App 私有加密保護檔案的金鑰儲存／變更／刪除、真實模型回應測試、`GET /v1/models` 掃描與篩選；預設模型 ID 為 `gpt-6.1-terra`。不保證每個帳號可用，失敗需手動選擇可用模型。
 - 鍵盤採可捲動工具格、固定操作列與地球切換控制；可讀選取、主動貼上來源／追加指令／結果、使用快捷修訂、保留版本、複製與插入。算式有自製數字鍵位，中文字使用貼上流程。
 
 ## 使用方式
 
-1. 主 App「設定」輸入金鑰並儲存到 Keychain；點「測試連線」。測試會真的呼叫目前模型，可能產生少量費用。掃描模型後選擇 ID，再儲存偏好。
+1. 主 App「設定」點「貼上金鑰」或輸入金鑰，儲存到 App 私有加密保護檔案；點「測試連線」。測試會真的呼叫目前模型，可能產生少量費用。掃描模型後選擇 ID，再儲存偏好。
 2. iOS 設定 → 一般 → 鍵盤 → 鍵盤 → 新增鍵盤 → ChaiTools。需要網路 AI 與共享資料時開啟「允許完整取用」。
 3. 在宿主 App 複製文字，從地球鍵切換 ChaiTools，選工具 → 貼上原文 → 執行。文章生成可把主題貼入追加指令，不需原文。
 4. 確認結果後複製或插入。若使用「取代選取」，會核對 documentIdentifier、選取文字及前後文；任一失效即拒絕取代。普通插入遇到選取時要求先取消選取，避免無意覆寫。從不自動送出，也不批量 deleteBackward。
@@ -36,10 +36,10 @@ ChaiTools 是 iOS 17+ 原生 SwiftUI 工作台與 UIKit 第三方 AI 鍵盤。�
 | --- | --- |
 | `ChaiTools/` | SwiftUI 主 App、設定、工作紀錄與工具管理 |
 | `ChaiToolsKeyboard/` | UIInputViewController、原生鍵盤面板與安全插入 |
-| `Shared/` | 共用模型、API、計算、版本、Keychain、App Group 儲存 |
+| `Shared/` | 共用模型、API、計算、版本、受保護金鑰檔案、App Group 儲存 |
 | `Tests/` | Swift Package XCTest，Mock URLProtocol 不連真實 API |
 | `project.yml` | XcodeGen 雙 Target、Extension 嵌入與 Scheme |
-| `Config.xcconfig` | Bundle ID、App Group 與 Keychain Group 集中設定 |
+| `Config.xcconfig` | Bundle ID 與 App Group 集中設定 |
 | `scripts/` | 建置及 IPA 結構／平台檢查 |
 
 在具備 Xcode 的 macOS：
@@ -54,11 +54,13 @@ bash scripts/build-unsigned-ipa.sh
 
 ## 資料與隱私
 
-金鑰只進 Keychain，不存 UserDefaults／JSON／GitHub。App 與鍵盤宣告一致的 App Group，依 Apple 官方機制同時將 App Group 名稱用作 Keychain access group，避免在未簽名建置時綁定團隊前綴；未簽名產物不會自行授予這些權限，實際裝置上的兩個 Target 必須具有一致、有效的共享權限，否則介面會明確報錯。
+自 1.1.1 起，依使用者要求不再使用 Keychain 保存金鑰。`CredentialStore` 在本 App 的 App Group 私有目錄 `PrivateCredentials` 使用 iOS `completeFileProtection` 寫入檔案：系統加密、鎖屏不可讀、目錄 0700／檔案 0600、原子寫入、跨程序鎖、排除備份。App 與鍵盤只共用此私有容器，不放在一般偏好／歷史 JSON。正常刪除本 App（同時移除其鍵盤）會由 iOS 刪除其私有容器；『卸載 App』會保留資料，並不等同『刪除 App』。不要讓其他 App 共用此 App Group，否則群組容器生命週期取決於最後一個成員 App。
+
+1.1.0 以前的舊金鑰由主 App 的 `LegacyCredentialCleanup` 以精確 service/account/group 範圍執行一次刪除，不讀出或轉存。清除失敗會明確提示並在下次啟動重試。升級後請重新貼上與儲存。未簽名產物不會自行授予 App Group 權限；實際 App 與鍵盤需有一致有效的共享權限，否則明確報錯。
 
 預設不永久儲存文字；啟用紀錄後最多 50 筆、每筆 30 版本、保留 7 天，到期在下次存取時清除。關閉紀錄即清除既有資料，亦可逐筆或全部刪除。App Group 使用檔案鎖、原子替換、資料保護與排除備份；不把金鑰放入共享 JSON。正在編輯的內容僅留在記憶體，Extension 被回收可能丟失未儲存草稿。
 
-只有明確執行才送出選定內容至 OpenAI，最多 40,000 字；鍵盤來源限制 8,000 字，預覽截短而複製保留全文。使用 `store=false`，但不承諾 OpenAI 零保留。純客戶端 Keychain 不等同後端保管，裝置遭入侵仍有風險。不在日誌打印金鑰或正文。工具輸入和網頁只作為資料，API 金鑰不進模型提示詞。
+只有明確執行才送出選定內容至 OpenAI，最多 40,000 字；鍵盤來源限制 8,000 字，預覽截短而複製保留全文。使用 `store=false`，但不承諾 OpenAI 零保留。客戶端檔案保護不等同後端保管，裝置遭入侵仍有風險。不在日誌打印金鑰或正文。工具輸入和網頁只作為資料，API 金鑰不進模型提示詞。
 
 請求可取消、60 秒超時，每個工作區一次一個請求。401／403／404／429／5xx 顯示分類；不自動重送可能已計費的 POST，使用者可手動重試。不聲稱 token 使用量是帳務餘額。
 
@@ -68,7 +70,7 @@ bash scripts/build-unsigned-ipa.sh
 
 `Tests/CoreTests.swift` 提供 6 組測試，涵蓋算式與單位、Responses 多段內容與來源過濾、翻譯 JSON／文字 fallback、拒絕與不完整回應、版本／跨 store 偏好／保留時限／歷史隱私、HTTP 錯誤、Mock URLProtocol 請求與模型列表。這些測試已撰寫但尚未執行，可在 macOS 使用 `swift test` 手動執行；本次 CI 只編譯與打包。
 
-尚待真機驗收：地球鍵、橫直式與 Dynamic Type、小螢幕、完整取用狀態、Keychain 跨 Target 存取、LINE／Discord 等宿主的選取與插入行為、Extension 回收、真實 API 模型權限與翻譯品質。請參考 [驗收清單](ACCEPTANCE.md)。
+尚待真機驗收：地球鍵、橫直式與 Dynamic Type、小螢幕、完整取用狀態、受保護檔案跨 Target 存取、LINE／Discord 等宿主的選取與插入行為、Extension 回收、真實 API 模型權限與翻譯品質。請參考 [驗收清單](ACCEPTANCE.md)。
 
 已知界線：
 
@@ -83,7 +85,7 @@ bash scripts/build-unsigned-ipa.sh
 
 [Apple UITextDocumentProxy](https://developer.apple.com/documentation/uikit/uitextdocumentproxy) · [OpenAI web search](https://developers.openai.com/api/docs/guides/tools-web-search) · [GitHub upload-artifact](https://github.com/actions/upload-artifact)
 
-Keychain 共用依據：[Apple 官方共用 Keychain 說明](https://developer.apple.com/documentation/security/sharing-access-to-keychain-items-among-a-collection-of-apps)。
+檔案加密依據：[Apple 完整檔案保護說明](https://developer.apple.com/documentation/foundation/nsdata/writingoptions/completefileprotection)。
 
 ## 1.1.0 互動與介面更新
 
@@ -91,6 +93,15 @@ Keychain 共用依據：[Apple 官方共用 Keychain 說明](https://developer.a
 
 新增真正的 AppIcon 資源、品牌首頁、工具搜尋與說明、鍵盤指南和隱私頁。原創圖示可由 `scripts/generate-icon.py` 重現（僅重繪需 Pillow；CI 直接使用已提交 PNG，不需安裝 Pillow）。詳見 [CHANGELOG.md](CHANGELOG.md)。
 
-每次功能更新須遞增可見版本：`python3 scripts/bump-version.py 1.1.1`。腳本要求新版本大於目前版本，更新 VERSION 與 project.yml；App／Extension 共用版本，設定頁讀取 Bundle，Build Number 由 Actions run number 遞增。不以重跑 CI 代替發行版本更新。
+每次功能更新須遞增可見版本：`python3 scripts/bump-version.py 1.1.2`。腳本要求新版本大於目前版本，更新 VERSION 與 project.yml；App／Extension 共用版本，設定頁讀取 Bundle，Build Number 由 Actions run number 遞增。不以重跑 CI 代替發行版本更新。
 
 本次新增檢查：圖示 1024×1024、RGB 無透明、asset manifest、版本一致、Shell／Python 語法。程式碼已人工檢查，但此環境沒有 Swift／Xcode，尚不能宣稱編譯或真機已驗證。依使用者要求不新增 GitHub App／UI 測試，也不持續等待產物。
+
+
+## 1.1.1 貼上與 App 內保存
+
+金鑰欄改為原生 UIKit 安全輸入，保留長按編輯選單；獨立「貼上金鑰」按鈕只在點擊時讀取剪貼簿，不依賴游標位置。貼上成功顯示字元數；無文字、權限未允許或內容無效時保留原輸入並顯示提示。只移除首尾空白，不任意修改金鑰。清空輸入不刪除已儲存金鑰。
+
+UI 只查詢金鑰檔案是否存在；使用者主動執行 AI／模型掃描／連線測試時才讀取金鑰，另在儲存時讀回驗證。金鑰只放在固定 OpenAI HTTPS 端點的 Authorization header，不進提示詞或模型請求本文；本文、工具提示或模型設定若包含目前金鑰，`CredentialPayloadGuard` 會在建立網路請求前拒絕送出。不能宣稱能防禦所有編碼或使用者主動改寫的金鑰內容，也不能保護遭攻破的裝置。
+
+本地已完成配置與安全路徑靜態檢查；新增輸入正規化／敏感資料拒送的 XCTest 留在倉庫供手動執行，尚未在此無 Swift/Xcode 環境執行。CI 仍只編譯、打包及驗證產物；貼上、完整檔案保護、刪除 App 後重裝等行為待真機確認。
